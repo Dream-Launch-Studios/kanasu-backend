@@ -2,9 +2,10 @@
 declare namespace Express {
     interface Request {
       user?: {
+        name: string;
         id: string;
         role: string;
-        // add any other properties based on the structure of your `user` object
+        
       };
     }
   }
