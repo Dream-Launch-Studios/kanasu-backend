@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id       String   @id @default(cuid())
+  id        String   @id @default(uuid()) @db.Uuid
   name      String?
   email     String?  @unique
   password  String?
@@ -17,6 +16,59 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Teacher {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String?
+  phone     String?  @unique
+  cohortId  String?  @db.Uuid
+  anganwadiId   String?  @db.Uuid // The ID of the assigned Anganwadi center
+  anganwadi     Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull) // Link to Anganwadi center
+  cohort    Cohort?  @relation(fields: [cohortId], references: [id], onDelete: SetNull) // ✅ Ensures no orphaned teachers
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt  
+}
+
+model Cohort {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String?
+  region    String?
+  teachers  Teacher[]
+  students   Student[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Student {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String?
+  age     String?  @unique
+  cohortId  String?  @db.Uuid
+  gender   String?
+  status  String? @default("ACTIVE")
+  anganwadiId String? @db.Uuid
+  anganwadi   Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull) // Link to Anganwadi center
+  cohort    Cohort?  @relation(fields: [cohortId], references: [id], onDelete: SetNull) // ✅ Ensures no orphaned students
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt  
+}
+
+model Anganwadi {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique  // Unique Anganwadi center name
+  location    String?  // Optional location details
+  district    String?
+  state       String?
+
+  // Relations
+  students    Student[]
+  teachers    Teacher[]
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt  
+}
+
 
 enum Role {
   ADMIN

@@ -26,3 +26,11 @@ export const authMiddleware = (roles: string[]) => (req: Request, res: Response,
     res.status(401).json({ error: "Invalid token" });
   }
 };
+
+
+export const authorizeAdmin = (req : Request, res: Response, next: NextFunction) => {
+  if (req.user?.role !== "ADMIN") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  next();
+}
