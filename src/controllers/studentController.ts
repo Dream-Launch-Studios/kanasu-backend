@@ -8,14 +8,21 @@ export const createStudent = async (
   next: NextFunction
 ) => {
   try {
-    const { name, age, cohortId } = req.body;
+    const { name, age, cohortId, gender, status, anganwadiId } = req.body;
     if (!name || !age || !cohortId)
       return res
         .status(400)
         .json({ error: "Name, Age, and Cohort ID are required" });
 
     const student = await prisma.student.create({
-      data: { name, age, cohortId },
+      data: {
+        name,
+        age,
+        cohortId: cohortId || null,
+        gender,
+        anganwadiId: anganwadiId || null, 
+        status: status || "ACTIVE",
+      },
     });
 
     return res
@@ -80,6 +87,71 @@ export const deleteStudent = async (
     const { id } = req.params;
     await prisma.student.delete({ where: { id } });
     return res.json({ message: "Student deleted successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addStudentToAnganwadi = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { studentId, anganwadiId } = req.body;
+    if (!studentId || !anganwadiId)
+      return res
+        .status(400)
+        .json({ error: "Student ID and Anganwadi ID are required" });
+
+    // Check if the anganwadi exists
+    const anganwadi = await prisma.anganwadi.findUnique({
+      where: { id: anganwadiId },
+    });
+    if (!anganwadi)
+      return res.status(404).json({ error: "Anganwadi not found" });
+
+    // Check if the student exists
+    const studentExists = await prisma.student.findUnique({
+      where: { id: studentId },
+    });
+    if (!studentExists)
+      return res.status(404).json({ error: "Student not found" });
+
+    // Update the student with the anganwadi ID
+    const updatedStudent = await prisma.student.update({
+      where: { id: studentId },
+      data: { anganwadiId },
+      include: { anganwadi: true },
+    });
+
+    return res.status(200).json({
+      message: "Student added to anganwadi successfully",
+      student: updatedStudent,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getStudentsByAnganwadi = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { anganwadiId } = req.params;
+
+    if (!anganwadiId) {
+      return res.status(400).json({ error: "Anganwadi ID is required" });
+    }
+
+    const students = await prisma.student.findMany({
+      where: { anganwadiId },
+      include: { anganwadi: true },
+    });
+
+    return res.json({ message: "Students fetched successfully", students });
   } catch (error) {
     next(error);
   }

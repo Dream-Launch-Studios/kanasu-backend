@@ -18,25 +18,25 @@ model User {
 }
 
 model Teacher {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String?
-  phone     String?  @unique
-  cohortId  String?  @db.Uuid
-  anganwadiId   String?  @db.Uuid // The ID of the assigned Anganwadi center
-  anganwadi     Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull) // Link to Anganwadi center
-  cohort    Cohort?  @relation(fields: [cohortId], references: [id], onDelete: SetNull) // ✅ Ensures no orphaned teachers
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt  
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String?
+  phone         String?  @unique
+  cohortId      String?  @db.Uuid
+  anganwadiId   String?  @db.Uuid 
+  anganwadi     Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull) 
+  cohort        Cohort?  @relation(fields: [cohortId], references: [id], onDelete: SetNull) 
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt  
 }
 
 model Cohort {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String?
-  region    String?
-  teachers  Teacher[]
-  students   Student[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String?
+  region      String?
+  teachers    Teacher[]
+  students    Student[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Student {
@@ -60,11 +60,9 @@ model Anganwadi {
   district    String?
   state       String?
 
-  // Relations
   students    Student[]
   teachers    Teacher[]
 
-  // Timestamps
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt  
 }

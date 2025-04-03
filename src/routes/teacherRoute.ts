@@ -4,8 +4,9 @@ import {
   getTeachers,
   deleteTeacher,
   addTeacherToCohort,
-  assignTeacherToAnganwadi
+  assignTeacherToAnganwadi,
 } from "../controllers/teacherController";
+import { authMiddleware } from "../middlewares/authMiddleware";
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.get("/", getTeachers);
 router.delete("/:id", deleteTeacher);
 router.patch("/assign", addTeacherToCohort);
 router.post("/assign-anganwadi", assignTeacherToAnganwadi);
+router.get("/by-anganwadi", assignTeacherToAnganwadi);
 
 export default router;

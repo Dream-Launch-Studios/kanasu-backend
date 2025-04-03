@@ -149,3 +149,45 @@ export const deleteTeacher = async (
     next(error);
   }
 };
+
+export const getTeachersByAnganwadi = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { id, name } = req.query;
+  
+      if (!id && !name) {
+        return res
+          .status(400)
+          .json({ error: "Anganwadi ID or Name is required" });
+      }
+  
+      let anganwadi;
+      if (id) {
+        anganwadi = await prisma.anganwadi.findUnique({
+          where: { id: id as string },
+          include: { teachers: true },
+        });
+      } else if (name) {
+        anganwadi = await prisma.anganwadi.findFirst({
+          where: { name: name as string },
+          include: { teachers: true },
+        });
+      }
+  
+      if (!anganwadi) {
+        return res.status(404).json({ error: "Anganwadi not found" });
+      }
+  
+      return res.json({
+        anganwadiId: anganwadi.id,
+        anganwadiName: anganwadi.name,
+        teachers: anganwadi.teachers,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+  
