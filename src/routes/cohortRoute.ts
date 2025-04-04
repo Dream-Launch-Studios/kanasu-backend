@@ -1,5 +1,5 @@
 import express from "express";
-import { createCohort, deleteCohort, getCohorts,  } from "../controllers/cohortController";
+import { createCohort, deleteCohort, getCohorts} from "../controllers/cohortController";
 
 const router = express.Router();
 

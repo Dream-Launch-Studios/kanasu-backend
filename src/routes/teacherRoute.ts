@@ -5,6 +5,7 @@ import {
   deleteTeacher,
   addTeacherToCohort,
   assignTeacherToAnganwadi,
+  assignTeacherToAnganwadiByName
 } from "../controllers/teacherController";
 import { authMiddleware } from "../middlewares/authMiddleware";
 
@@ -14,7 +15,7 @@ router.post("/", createTeacher);
 router.get("/", getTeachers);
 router.delete("/:id", deleteTeacher);
 router.patch("/assign", addTeacherToCohort);
-router.post("/assign-anganwadi", assignTeacherToAnganwadi);
+router.post("/assign-anganwadi", assignTeacherToAnganwadiByName);
 router.get("/by-anganwadi", assignTeacherToAnganwadi);
 
 export default router;

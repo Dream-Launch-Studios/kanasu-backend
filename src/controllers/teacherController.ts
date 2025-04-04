@@ -190,4 +190,60 @@ export const getTeachersByAnganwadi = async (
       next(error);
     }
   };
+
+  export const assignTeacherToAnganwadiByName = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { teacherId, anganwadiId, anganwadiName } = req.body;
+  
+      if (!teacherId || (!anganwadiId && !anganwadiName)) {
+        return res.status(400).json({
+          error: "Teacher ID and either Anganwadi ID or Anganwadi Name are required",
+        });
+      }
+  
+      // Find the Anganwadi by ID or name
+      let anganwadi;
+  
+      if (anganwadiId) {
+        anganwadi = await prisma.anganwadi.findUnique({
+          where: { id: anganwadiId },
+        });
+      } else if (anganwadiName) {
+        anganwadi = await prisma.anganwadi.findFirst({
+          where: { name: anganwadiName },
+        });
+      }
+  
+      if (!anganwadi) {
+        return res.status(404).json({ error: "Anganwadi not found" });
+      }
+  
+      // Check if the teacher exists
+      const teacher = await prisma.teacher.findUnique({
+        where: { id: teacherId },
+      });
+  
+      if (!teacher) {
+        return res.status(404).json({ error: "Teacher not found" });
+      }
+  
+      // Update the teacher's anganwadiId
+      const updatedTeacher = await prisma.teacher.update({
+        where: { id: teacherId },
+        data: { anganwadiId: anganwadi.id },
+      });
+  
+      return res.status(200).json({
+        message: "Teacher assigned to Anganwadi successfully",
+        teacher: updatedTeacher,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+  
   

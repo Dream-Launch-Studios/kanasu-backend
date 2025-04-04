@@ -18,7 +18,7 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/cohort", cohortRouter);
-app.use("/api/aganwadi", anganwadiRouter);
+app.use("/api/anganwadis", anganwadiRouter);
 app.use("/api/students", studentRouter);
 app.use("/api/teachers", teacherRouter);
 

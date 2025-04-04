@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import prisma from "../config/prisma";
+import { Prisma } from "@prisma/client";
 
 
 interface CreateAnganwadiRequest {
@@ -11,7 +12,7 @@ interface CreateAnganwadiRequest {
 }
 
 export const createAnganwadi = async (
-  req: Request<{}, {}, CreateAnganwadiRequest>, // 👈 Strongly typed request body
+  req: Request<{}, {}, CreateAnganwadiRequest>, 
   res: Response,
   next: NextFunction
 ) => {
@@ -97,9 +98,24 @@ export const getAnganwadis = async (
   next: NextFunction
 ) => {
   try {
+    const { search } = req.query;
+
+    let whereClause: Prisma.AnganwadiWhereInput = {};
+
+    if (search && typeof search === "string") {
+      whereClause = {
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { location: { contains: search, mode: "insensitive" } },
+        ],
+      };
+    }
+
     const anganwadis = await prisma.anganwadi.findMany({
+      where: whereClause,
       include: { teachers: true, students: true },
     });
+
     return res.json(anganwadis);
   } catch (error) {
     next(error);
@@ -227,6 +243,71 @@ export const deleteAnganwadi = async (
     const { id } = req.params;
     await prisma.anganwadi.delete({ where: { id } });
     return res.json({ message: "Anganwadi deleted successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ✅ Assign a teacher or student to an existing Anganwadi
+export const assignToAnganwadi = async (
+  req: Request<
+    {}, 
+    {}, 
+    { anganwadiId: string; teacherId?: string; studentId?: string }
+  >,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { anganwadiId, teacherId, studentId } = req.body;
+
+    if (!anganwadiId || (!teacherId && !studentId)) {
+      return res
+        .status(400)
+        .json({ error: "Anganwadi ID and at least one of teacherId or studentId are required" });
+    }
+
+    const anganwadi = await prisma.anganwadi.findUnique({
+      where: { id: anganwadiId },
+    });
+
+    if (!anganwadi) {
+      return res.status(404).json({ error: "Anganwadi not found" });
+    }
+
+    if (teacherId) {
+      const teacher = await prisma.teacher.findUnique({ where: { id: teacherId } });
+      if (!teacher) {
+        return res.status(404).json({ error: "Teacher not found" });
+      }
+
+      await prisma.anganwadi.update({
+        where: { id: anganwadiId },
+        data: {
+          teachers: {
+            connect: { id: teacherId },
+          },
+        },
+      });
+    }
+
+    if (studentId) {
+      const student = await prisma.student.findUnique({ where: { id: studentId } });
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      await prisma.anganwadi.update({
+        where: { id: anganwadiId },
+        data: {
+          students: {
+            connect: { id: studentId },
+          },
+        },
+      });
+    }
+
+    return res.status(200).json({ message: "Assigned successfully to Anganwadi" });
   } catch (error) {
     next(error);
   }

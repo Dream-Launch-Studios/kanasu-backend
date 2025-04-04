@@ -5,6 +5,7 @@ import {
     getAnganwadiById,
     updateAnganwadi,
     deleteAnganwadi,
+    assignToAnganwadi,
 } from "../controllers/anganwadiController"
 
 import { authMiddleware } from "../middlewares/authMiddleware";
@@ -13,8 +14,9 @@ const router = express.Router();
 
 router.post("/", createAnganwadi);
 router.get("/", getAnganwadis);
-router.delete("/:id", getAnganwadiById);
+router.get("/:id", getAnganwadiById);
 router.patch("/assign-anganwadi", updateAnganwadi);
-router.get("/anganwadi/:anganwadiId", deleteAnganwadi);
+router.delete("/:id", deleteAnganwadi);
+router.post("/assign", assignToAnganwadi);
 
 export default router;
