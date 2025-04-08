@@ -22,53 +22,100 @@ model Teacher {
   name          String?
   phone         String?  @unique
   cohortId      String?  @db.Uuid
-  anganwadiId   String?  @db.Uuid 
-  anganwadi     Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull) 
+  anganwadi     Anganwadi? @relation(fields: [anganwadiId], references: [id])
+  anganwadiId   String? @unique @db.Uuid 
+
   cohort        Cohort?  @relation(fields: [cohortId], references: [id], onDelete: SetNull) 
+  evaluations   Evaluation[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt  
 }
 
 model Cohort {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String?
-  region      String?
-  teachers    Teacher[]
-  students    Student[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                    String   @id @default(uuid()) @db.Uuid
+  name                  String?
+  region                String?
+  teachers              Teacher[]
+  regionalCoordinatorId String?  @db.Uuid
+  regionalCoordinator   RegionalCoordinator? @relation(fields: [regionalCoordinatorId], references: [id])
+  evaluations           Evaluation[]
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model Student {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String?
-  age     String?  @unique
-  cohortId  String?  @db.Uuid
-  gender   String?
-  status  String? @default("ACTIVE")
-  anganwadiId String? @db.Uuid
-  anganwadi   Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull) // Link to Anganwadi center
-  cohort    Cohort?  @relation(fields: [cohortId], references: [id], onDelete: SetNull) // ✅ Ensures no orphaned students
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt  
+  id            String      @id @default(uuid()) @db.Uuid
+  name          String?
+  age           Int?        @db.Integer
+  cohortId      String?     @db.Uuid
+  gender        String?
+  status        String?     @default("ACTIVE")
+  anganwadiId   String?     @db.Uuid
+  anganwadi     Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull)
+  evaluations   Evaluation[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt  
 }
 
 model Anganwadi {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String   @unique  // Unique Anganwadi center name
-  location    String?  // Optional location details
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique
+  location    String?
   district    String?
   state       String?
-
   students    Student[]
-  teachers    Teacher[]
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt  
+  teacher     Teacher?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt  
 }
 
+model Topic {
+  id          String     @id @default(uuid()) @db.Uuid
+  name        String
+  version     Int        @default(1)
+  questions   Question[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Question {
+  id         String   @id @default(uuid()) @db.Uuid
+  text       String?
+  imageUrl   String?
+  audioUrl   String?
+  topicId    String   @db.Uuid
+  topic      Topic    @relation(fields: [topicId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Evaluation {
+  id          String   @id @default(uuid()) @db.Uuid
+  teacherId   String   @db.Uuid
+  studentId   String   @db.Uuid
+  cohortId    String?  @db.Uuid
+  weekNumber  Int
+  metadataUrl String   // JSON file stored in S3
+  audioUrl    String   // AAC format audio file in S3
+  createdAt   DateTime @default(now())
+
+  teacher     Teacher  @relation(fields: [teacherId], references: [id])
+  student     Student  @relation(fields: [studentId], references: [id])
+  cohort      Cohort?  @relation(fields: [cohortId], references: [id])
+}
+
+model RegionalCoordinator {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  email     String   @unique
+  password  String?
+  cohorts   Cohort[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
 enum Role {
   ADMIN
   REGIONAL_COORDINATOR
+  TEACHER
 }

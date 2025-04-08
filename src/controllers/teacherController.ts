@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import prisma from "../config/prisma";
 
-// ✅ Create a Teacher (Cohort ID & Anganwadi ID are Optional)
+// ✅ Create a Teacher (Only one teacher per Anganwadi allowed)
 export const createTeacher = async (
   req: Request,
   res: Response,
@@ -10,16 +10,29 @@ export const createTeacher = async (
   try {
     const { name, phone, cohortId, anganwadiId } = req.body;
 
-    if (!name || !phone) {
-      return res.status(400).json({ error: "Name and Phone are required" });
+    if (!name || !phone || !anganwadiId) {
+      return res
+        .status(400)
+        .json({ error: "Name, Phone, and Anganwadi ID are required" });
+    }
+
+    // Check if a teacher is already assigned to this Anganwadi
+    const existingTeacher = await prisma.teacher.findFirst({
+      where: { anganwadiId },
+    });
+
+    if (existingTeacher) {
+      return res
+        .status(400)
+        .json({ error: "A teacher already exists for this Anganwadi" });
     }
 
     const teacher = await prisma.teacher.create({
       data: {
         name,
         phone,
-        cohortId: cohortId || null, // Allow cohortId to be null
-        anganwadiId: anganwadiId || null, // Allow anganwadiId to be null
+        cohortId: cohortId || null,
+        anganwadiId,
       },
     });
 
@@ -31,93 +44,7 @@ export const createTeacher = async (
   }
 };
 
-// ✅ Assign a Teacher to a Cohort
-export const addTeacherToCohort = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { teacherId, cohortId } = req.body;
-
-    if (!teacherId || !cohortId) {
-      return res
-        .status(400)
-        .json({ error: "Teacher ID and Cohort ID are required" });
-    }
-
-    // Check if the cohort exists
-    const cohort = await prisma.cohort.findUnique({ where: { id: cohortId } });
-    if (!cohort) {
-      return res.status(404).json({ error: "Cohort not found" });
-    }
-
-    // Check if the teacher exists
-    const teacher = await prisma.teacher.findUnique({ where: { id: teacherId } });
-    if (!teacher) {
-      return res.status(404).json({ error: "Teacher not found" });
-    }
-
-    // Update the teacher's cohortId
-    const updatedTeacher = await prisma.teacher.update({
-      where: { id: teacherId },
-      data: { cohortId },
-    });
-
-    return res.status(200).json({
-      message: "Teacher added to cohort successfully",
-      teacher: updatedTeacher,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ✅ Assign a Teacher to an Anganwadi
-export const assignTeacherToAnganwadi = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { teacherId, anganwadiId } = req.body;
-
-    if (!teacherId || !anganwadiId) {
-      return res
-        .status(400)
-        .json({ error: "Teacher ID and Anganwadi ID are required" });
-    }
-
-    // Check if the Anganwadi exists
-    const anganwadi = await prisma.anganwadi.findUnique({
-      where: { id: anganwadiId },
-    });
-    if (!anganwadi) {
-      return res.status(404).json({ error: "Anganwadi not found" });
-    }
-
-    // Check if the teacher exists
-    const teacher = await prisma.teacher.findUnique({ where: { id: teacherId } });
-    if (!teacher) {
-      return res.status(404).json({ error: "Teacher not found" });
-    }
-
-    // Update the teacher's anganwadiId
-    const updatedTeacher = await prisma.teacher.update({
-      where: { id: teacherId },
-      data: { anganwadiId },
-    });
-
-    return res.status(200).json({
-      message: "Teacher assigned to Anganwadi successfully",
-      teacher: updatedTeacher,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ✅ Get All Teachers (Include Cohort & Anganwadi Info)
+// ✅ Get All Teachers
 export const getTeachers = async (
   req: Request,
   res: Response,
@@ -127,6 +54,33 @@ export const getTeachers = async (
     const teachers = await prisma.teacher.findMany({
       include: { cohort: true, anganwadi: true },
     });
+    return res.json(teachers);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ✅ Search Teachers
+export const searchTeachers = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { search } = req.query;
+
+    const teachers = await prisma.teacher.findMany({
+      where: {
+        OR: search
+          ? [
+              { name: { contains: search as string, mode: "insensitive" } },
+              { phone: { contains: search as string, mode: "insensitive" } },
+            ]
+          : undefined,
+      },
+      include: { cohort: true, anganwadi: true },
+    });
+
     return res.json(teachers);
   } catch (error) {
     next(error);
@@ -150,100 +104,26 @@ export const deleteTeacher = async (
   }
 };
 
-export const getTeachersByAnganwadi = async (
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const { id, name } = req.query;
-  
-      if (!id && !name) {
-        return res
-          .status(400)
-          .json({ error: "Anganwadi ID or Name is required" });
-      }
-  
-      let anganwadi;
-      if (id) {
-        anganwadi = await prisma.anganwadi.findUnique({
-          where: { id: id as string },
-          include: { teachers: true },
-        });
-      } else if (name) {
-        anganwadi = await prisma.anganwadi.findFirst({
-          where: { name: name as string },
-          include: { teachers: true },
-        });
-      }
-  
-      if (!anganwadi) {
-        return res.status(404).json({ error: "Anganwadi not found" });
-      }
-  
-      return res.json({
-        anganwadiId: anganwadi.id,
-        anganwadiName: anganwadi.name,
-        teachers: anganwadi.teachers,
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
+// ✅ Get a single Teacher by ID
+export const getTeacherById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
 
-  export const assignTeacherToAnganwadiByName = async (
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const { teacherId, anganwadiId, anganwadiName } = req.body;
-  
-      if (!teacherId || (!anganwadiId && !anganwadiName)) {
-        return res.status(400).json({
-          error: "Teacher ID and either Anganwadi ID or Anganwadi Name are required",
-        });
-      }
-  
-      // Find the Anganwadi by ID or name
-      let anganwadi;
-  
-      if (anganwadiId) {
-        anganwadi = await prisma.anganwadi.findUnique({
-          where: { id: anganwadiId },
-        });
-      } else if (anganwadiName) {
-        anganwadi = await prisma.anganwadi.findFirst({
-          where: { name: anganwadiName },
-        });
-      }
-  
-      if (!anganwadi) {
-        return res.status(404).json({ error: "Anganwadi not found" });
-      }
-  
-      // Check if the teacher exists
-      const teacher = await prisma.teacher.findUnique({
-        where: { id: teacherId },
-      });
-  
-      if (!teacher) {
-        return res.status(404).json({ error: "Teacher not found" });
-      }
-  
-      // Update the teacher's anganwadiId
-      const updatedTeacher = await prisma.teacher.update({
-        where: { id: teacherId },
-        data: { anganwadiId: anganwadi.id },
-      });
-  
-      return res.status(200).json({
-        message: "Teacher assigned to Anganwadi successfully",
-        teacher: updatedTeacher,
-      });
-    } catch (error) {
-      next(error);
+    const teacher = await prisma.teacher.findUnique({
+      where: { id },
+      include: { cohort: true, anganwadi: true },
+    });
+
+    if (!teacher) {
+      return res.status(404).json({ error: "Teacher not found" });
     }
-  };
-  
-  
+
+    return res.json(teacher);
+  } catch (error) {
+    next(error);
+  }
+};

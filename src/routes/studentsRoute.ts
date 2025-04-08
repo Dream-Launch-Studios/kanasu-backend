@@ -3,7 +3,9 @@ import {
   createStudent,
   getStudents,
   deleteStudent,
-  addStudentToAnganwadi
+  addStudentToAnganwadi,
+  searchAndAddStudentToAnganwadiByName,
+  searchStudents,
 } from "../controllers/studentController";
 import { authMiddleware } from "../middlewares/authMiddleware";
 
@@ -14,5 +16,7 @@ router.get("/", getStudents);
 router.delete("/:id", deleteStudent);
 router.patch("/assign-anganwadi", addStudentToAnganwadi);
 router.get("/anganwadi/:anganwadiId", addStudentToAnganwadi);
+router.post("/assign-by-name", searchAndAddStudentToAnganwadiByName);
+router.get("/", searchStudents);
 
 export default router;

@@ -3,19 +3,29 @@ import {
   createTeacher,
   getTeachers,
   deleteTeacher,
-  addTeacherToCohort,
-  assignTeacherToAnganwadi,
-  assignTeacherToAnganwadiByName
+  searchTeachers,
+  getTeacherById,
 } from "../controllers/teacherController";
-import { authMiddleware } from "../middlewares/authMiddleware";
 
 const router = express.Router();
 
+// ✅ Create a teacher
 router.post("/", createTeacher);
+
+// ✅ Get all teachers
 router.get("/", getTeachers);
+
+// ✅ Search teachers
+router.get("/search", searchTeachers); // must come before "/:id"
+
+// ✅ Get teacher by Anganwadi ID
+
+// ✅ Get teacher by ID
+router.get("/:id", getTeacherById);
+
+// ✅ Update teacher
+
+// ✅ Delete teacher
 router.delete("/:id", deleteTeacher);
-router.patch("/assign", addTeacherToCohort);
-router.post("/assign-anganwadi", assignTeacherToAnganwadiByName);
-router.get("/by-anganwadi", assignTeacherToAnganwadi);
 
 export default router;
