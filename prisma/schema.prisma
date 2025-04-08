@@ -70,12 +70,13 @@ model Anganwadi {
 }
 
 model Topic {
-  id          String     @id @default(uuid()) @db.Uuid
+  id          String       @id @default(uuid()) @db.Uuid
   name        String
-  version     Int        @default(1)
+  version     Int          @default(1)
   questions   Question[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  evaluations Evaluation[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }
 
 model Question {
@@ -87,22 +88,30 @@ model Question {
   topic      Topic    @relation(fields: [topicId], references: [id])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+    evaluations Evaluation[]  @relation("EvaluationQuestions") // 👈 Add this line
+
 }
 
 model Evaluation {
-  id          String   @id @default(uuid()) @db.Uuid
-  teacherId   String   @db.Uuid
-  studentId   String   @db.Uuid
-  cohortId    String?  @db.Uuid
+  id          String     @id @default(uuid()) @db.Uuid
+  teacherId   String     @db.Uuid
+  topicId     String     @db.Uuid
+  studentId   String     @db.Uuid
+  cohortId    String?    @db.Uuid
   weekNumber  Int
-  metadataUrl String   // JSON file stored in S3
-  audioUrl    String   // AAC format audio file in S3
-  createdAt   DateTime @default(now())
+  metadataUrl String
+  audioUrl    String
+  createdAt   DateTime   @default(now())
 
-  teacher     Teacher  @relation(fields: [teacherId], references: [id])
-  student     Student  @relation(fields: [studentId], references: [id])
-  cohort      Cohort?  @relation(fields: [cohortId], references: [id])
+  teacher     Teacher    @relation(fields: [teacherId], references: [id])
+  student     Student    @relation(fields: [studentId], references: [id])
+  topic       Topic      @relation(fields: [topicId], references: [id])
+  cohort      Cohort?    @relation(fields: [cohortId], references: [id])
+  
+  questions   Question[] @relation("EvaluationQuestions") // 👈 Add this line
 }
+
 
 model RegionalCoordinator {
   id        String   @id @default(uuid()) @db.Uuid

@@ -8,6 +8,7 @@ import cohortRouter from "./routes/cohortRoute";
 import studentRouter from "./routes/studentsRoute";
 import teacherRouter from "./routes/teacherRoute";
 import anganwadiRouter from "./routes/anganwadiRoutes";
+import topicRouter from "./routes/topicRoute";
 const app = express();
 
 app.use(cors());
@@ -21,5 +22,5 @@ app.use("/api/cohort", cohortRouter);
 app.use("/api/anganwadis", anganwadiRouter);
 app.use("/api/students", studentRouter);
 app.use("/api/teachers", teacherRouter);
-
+app.use("/api/topics", topicRouter);
 export default app;
