@@ -27,6 +27,7 @@ model Teacher {
 
   cohort        Cohort?  @relation(fields: [cohortId], references: [id], onDelete: SetNull) 
   evaluations   Evaluation[]
+  studentSubmissions StudentSubmission[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt  
 }
@@ -46,7 +47,6 @@ model Cohort {
 model Student {
   id            String      @id @default(uuid()) @db.Uuid
   name          String?
-  age           Int?        @db.Integer
   cohortId      String?     @db.Uuid
   gender        String?
   status        String?     @default("ACTIVE")
@@ -54,6 +54,7 @@ model Student {
   anganwadi     Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull)
   evaluations   Evaluation[]
   responses     StudentResponse[]
+  studentSubmissions StudentSubmission[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt  
 }
@@ -67,7 +68,9 @@ model Anganwadi {
   students    Student[]
   teacher     Teacher?
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt  
+  updatedAt   DateTime  @updatedAt
+  anganwadiAssessments AnganwadiAssessment[]
+  studentSubmissions   StudentSubmission[]
 }
 
 model Topic {
@@ -78,6 +81,15 @@ model Topic {
   evaluations Evaluation[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+}
+model StudentResponseScore {
+  id               String         @id @default(uuid()) @db.Uuid
+  studentResponseId String         @db.Uuid
+  score            Float         
+  gradedAt         DateTime       @default(now())
+  
+  studentResponse  StudentResponse @relation(fields: [studentResponseId], references: [id])
+ 
 }
 
 model Question {
@@ -93,7 +105,6 @@ model Question {
   evaluations Evaluation[]  @relation("EvaluationQuestions")
   responses   StudentResponse[]
 }
-
 model Evaluation {
   id          String     @id @default(uuid()) @db.Uuid
   teacherId   String     @db.Uuid
@@ -104,7 +115,9 @@ model Evaluation {
   metadataUrl String
   audioUrl    String
   createdAt   DateTime   @default(now())
-
+    status           String        @default("DRAFT") 
+  submittedAt      DateTime?  
+  gradingComplete  Boolean       @default(false)
   teacher     Teacher    @relation(fields: [teacherId], references: [id])
   student     Student    @relation(fields: [studentId], references: [id])
   topic       Topic      @relation(fields: [topicId], references: [id])
@@ -112,6 +125,8 @@ model Evaluation {
   
   questions   Question[] @relation("EvaluationQuestions")
   studentResponses   StudentResponse[]
+
+  AssessmentSession AssessmentSession[]
 }
 
 model StudentResponse {
@@ -119,6 +134,7 @@ model StudentResponse {
   evaluationId String   @db.Uuid
   questionId   String   @db.Uuid
   studentId    String   @db.Uuid
+  studentSubmissionId String? @db.Uuid
 
   startTime    DateTime
   endTime      DateTime
@@ -127,6 +143,9 @@ model StudentResponse {
   evaluation   Evaluation @relation(fields: [evaluationId], references: [id])
   question     Question   @relation(fields: [questionId], references: [id])
   student      Student    @relation(fields: [studentId], references: [id])
+  studentSubmission StudentSubmission? @relation(fields: [studentSubmissionId], references: [id])
+
+  StudentResponseScore StudentResponseScore[]
 }
 
 
@@ -140,8 +159,73 @@ model RegionalCoordinator {
   updatedAt DateTime @updatedAt
 }
 
+model AssessmentSession {
+  id              String       @id @default(uuid()) @db.Uuid
+  name            String
+  description     String?
+  startDate       DateTime
+  endDate         DateTime
+  isActive        Boolean      @default(true)
+  status          String       @default("DRAFT") // DRAFT, PUBLISHED, COMPLETED
+  topicIds        String[]     @db.Uuid // Topics included in this assessment
+  
+  evaluations     Evaluation[]
+  anganwadiAssessments AnganwadiAssessment[]
+  studentSubmissions   StudentSubmission[]
+}
+
+model AnganwadiAssessment {
+  id                 String           @id @default(uuid()) @db.Uuid
+  assessmentSessionId String           @db.Uuid
+  anganwadiId        String           @db.Uuid
+  isComplete         Boolean          @default(false)
+  completedStudentCount Int            @default(0)
+  totalStudentCount    Int            @default(0)
+  
+  assessmentSession   AssessmentSession @relation(fields: [assessmentSessionId], references: [id])
+  anganwadi           Anganwadi         @relation(fields: [anganwadiId], references: [id])
+  
+  @@unique([assessmentSessionId, anganwadiId])
+}
+
+model StudentSubmission {
+  id                  String           @id @default(uuid()) @db.Uuid
+  assessmentSessionId  String           @db.Uuid
+  anganwadiId         String           @db.Uuid
+  studentId           String           @db.Uuid
+  teacherId           String           @db.Uuid
+  submissionStatus    String           @default("COMPLETED") // Changed default to COMPLETED since we only create records when complete
+  submittedAt         DateTime         @default(now())
+  
+  assessmentSession   AssessmentSession @relation(fields: [assessmentSessionId], references: [id])
+  anganwadi           Anganwadi         @relation(fields: [anganwadiId], references: [id])
+  student             Student           @relation(fields: [studentId], references: [id])
+  teacher             Teacher           @relation(fields: [teacherId], references: [id])
+  responses           StudentResponse[]
+}
+
 enum Role {
   ADMIN
   REGIONAL_COORDINATOR
   TEACHER
+}
+
+model CsvImport {
+  id          String   @id @default(uuid()) @db.Uuid
+  filename    String
+  importedBy  String   @db.Uuid
+  status      CsvImportStatus
+  errorLog    String?
+  importedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  totalRows   Int      @default(0)
+  successRows Int      @default(0)
+  failedRows  Int      @default(0)
+}
+
+enum CsvImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }

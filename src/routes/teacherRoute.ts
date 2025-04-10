@@ -8,6 +8,11 @@ import {
   updateTeacher,
   getTeacherRankings,
   getTeacherStudents,
+  getTeacherAssessmentSessions,
+  getTeacherEvaluationsByStatus,
+  getTeacherStudentsForAssessment,
+  getTeacherPerformanceSummary,
+  getTeacherStudentResponses
 } from "../controllers/teacherController";
 
 const router = express.Router();
@@ -27,6 +32,12 @@ router.get("/rankings", getTeacherRankings);
 // ✅ Get students evaluated by a specific teacher
 router.get("/:id/students", getTeacherStudents);
 
+// New assessment-related routes
+router.get("/:id/assessment-sessions", getTeacherAssessmentSessions);
+router.get("/:id/evaluations", getTeacherEvaluationsByStatus);
+router.get("/:id/students-for-assessment", getTeacherStudentsForAssessment);
+router.get("/:id/performance", getTeacherPerformanceSummary);
+
 // ✅ Get teacher by ID
 router.get("/:id", getTeacherById);
 
@@ -35,5 +46,8 @@ router.put("/:id", updateTeacher);
 
 // ✅ Delete teacher
 router.delete("/:id", deleteTeacher);
+
+// New route to get student responses for a specific teacher
+router.get("/:id/student-responses", getTeacherStudentResponses);
 
 export default router;
