@@ -1,67 +1,89 @@
 import type { Request, Response } from "express";
 import prisma from "../config/prisma";
-import  cloudinary  from "../utils/cloudinary";
+import { uploadToCloudinary } from "../utils/cloudinary";
 import fs from "fs";
-import path from "path";
 
-export const createEvaluation = async (req: Request, res: Response) => {
+interface FileRequest extends Request {
+  files?: {
+    [fieldname: string]: Express.Multer.File[];
+  };
+}
+
+export const createEvaluation = async (req: FileRequest, res: Response) => {
   try {
     const {
       teacherId,
       studentId,
       topicId,
       weekNumber,
-      questions, // array of question IDs
+      questions, // JSON string of question IDs
+      cohortId,
+      metadata, // ✅ JSON string
     } = req.body;
 
-    const audioFile = req.files?.audio?.[0]; // assuming you're using multer for multipart/form-data
-    const metadataFile = req.files?.metadata?.[0];
+    const audioFile = req.files?.audio?.[0];
 
-    if (!audioFile || !metadataFile) {
-      return res.status(400).json({ error: "Audio or metadata file missing." });
+    if (!audioFile || !metadata) {
+      return res
+        .status(400)
+        .json({ error: "Audio file and metadata are required." });
     }
 
     // Upload audio to Cloudinary
-    const audioUpload = await cloudinary.uploader.upload(audioFile.path, {
-      resource_type: "video",
-      folder: "evaluations/audio",
-    });
+    const audioUpload = await uploadToCloudinary(audioFile.path, "audio");
+    fs.unlinkSync(audioFile.path); // Clean up
 
-    // Upload metadata JSON to Cloudinary
-    const metadataUpload = await cloudinary.uploader.upload(metadataFile.path, {
-      resource_type: "raw",
-      folder: "evaluations/metadata",
-    });
+    const metadataJson = JSON.parse(metadata); // ✅ Now parsing from req.body
 
-    // Cleanup local files
-    fs.unlinkSync(audioFile.path);
-    fs.unlinkSync(metadataFile.path);
+    // Upload metadata to Cloudinary as raw string
+    const metadataBlob = Buffer.from(JSON.stringify(metadataJson));
+    const metadataPath = `temp_${Date.now()}.json`;
+    fs.writeFileSync(metadataPath, metadataBlob);
 
-    // Save to DB
+    const metadataUpload = await uploadToCloudinary(metadataPath, "metadata");
+    fs.unlinkSync(metadataPath); // Clean up
+
+    // Create evaluation
     const evaluation = await prisma.evaluation.create({
       data: {
         teacherId,
         studentId,
         topicId,
         weekNumber: parseInt(weekNumber),
+        cohortId: cohortId || null,
         metadataUrl: metadataUpload.secure_url,
         audioUrl: audioUpload.secure_url,
         questions: {
-          connect: questions.map((id: string) => ({ id })),
+          connect: JSON.parse(questions).map((id: string) => ({ id })),
         },
       },
     });
 
-    res
-      .status(201)
-      .json({ message: "Evaluation created successfully", evaluation });
+    // Create student responses
+    if (Array.isArray(metadataJson.responses)) {
+      for (const response of metadataJson.responses) {
+        await prisma.studentResponse.create({
+          data: {
+            evaluationId: evaluation.id,
+            studentId,
+            questionId: response.questionId,
+            startTime: new Date(response.startTime),
+            endTime: new Date(response.endTime),
+            audioUrl: response.audioUrl ?? audioUpload.secure_url,
+          },
+        });
+      }
+    }
+
+    res.status(201).json({ message: "Evaluation created successfully", evaluation });
   } catch (error) {
     console.error("[Create Evaluation Error]", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
 
-export const getEvaluations = async (req: Request, res: Response) => {
+// ✅ Get all evaluations
+export const getEvaluations = async (_req: Request, res: Response) => {
   try {
     const evaluations = await prisma.evaluation.findMany({
       include: {
@@ -79,6 +101,7 @@ export const getEvaluations = async (req: Request, res: Response) => {
   }
 };
 
+// ✅ Get evaluation by ID
 export const getEvaluationById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -90,6 +113,7 @@ export const getEvaluationById = async (req: Request, res: Response) => {
         student: true,
         topic: true,
         questions: true,
+        studentResponses: true,
       },
     });
 

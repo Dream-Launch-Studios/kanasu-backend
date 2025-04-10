@@ -53,6 +53,7 @@ model Student {
   anganwadiId   String?     @db.Uuid
   anganwadi     Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull)
   evaluations   Evaluation[]
+  responses     StudentResponse[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt  
 }
@@ -89,8 +90,8 @@ model Question {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-    evaluations Evaluation[]  @relation("EvaluationQuestions") // 👈 Add this line
-
+  evaluations Evaluation[]  @relation("EvaluationQuestions")
+  responses   StudentResponse[]
 }
 
 model Evaluation {
@@ -109,7 +110,23 @@ model Evaluation {
   topic       Topic      @relation(fields: [topicId], references: [id])
   cohort      Cohort?    @relation(fields: [cohortId], references: [id])
   
-  questions   Question[] @relation("EvaluationQuestions") // 👈 Add this line
+  questions   Question[] @relation("EvaluationQuestions")
+  studentResponses   StudentResponse[]
+}
+
+model StudentResponse {
+  id           String   @id @default(uuid()) @db.Uuid
+  evaluationId String   @db.Uuid
+  questionId   String   @db.Uuid
+  studentId    String   @db.Uuid
+
+  startTime    DateTime
+  endTime      DateTime
+  audioUrl     String
+
+  evaluation   Evaluation @relation(fields: [evaluationId], references: [id])
+  question     Question   @relation(fields: [questionId], references: [id])
+  student      Student    @relation(fields: [studentId], references: [id])
 }
 
 

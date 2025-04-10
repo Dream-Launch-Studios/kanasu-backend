@@ -1,10 +1,14 @@
-import { Router } from "express";
-import multer from "multer";
-import { createEvaluation, getEvaluations, getEvaluationById } from "../controllers/evaluationController";
+import express from "express";
+import {
+  createEvaluation,
+  getEvaluations,
+  getEvaluationById,
+} from "../controllers/evaluationController";
+import { upload } from "../middlewares/multer"; // Ensure this multer middleware is set up for multipart/form-data
 
-const router = Router();
-const upload = multer({ dest: "uploads/" });
+const router = express.Router();
 
+// ✅ Create Evaluation (audio + metadata)
 router.post(
   "/",
   upload.fields([
@@ -14,7 +18,10 @@ router.post(
   createEvaluation
 );
 
+// ✅ Get all evaluations
 router.get("/", getEvaluations);
+
+// ✅ Get evaluation by ID
 router.get("/:id", getEvaluationById);
 
 export default router;

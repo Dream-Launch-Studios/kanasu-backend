@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import prisma from "../config/prisma";
 import { uploadToCloudinary } from "../utils/cloudinary";
+import fs from "fs";
 
 interface FileRequest extends Request {
   files?: {
@@ -24,6 +25,10 @@ export const createQuestion = async (req: FileRequest, res: Response) => {
     const imageUpload = await uploadToCloudinary(imageFile.path, "image");
     const audioUpload = await uploadToCloudinary(audioFile.path, "audio");
 
+    // Clean up local files
+    fs.unlinkSync(imageFile.path);
+    fs.unlinkSync(audioFile.path);
+
     const question = await prisma.question.create({
       data: {
         text,
@@ -33,9 +38,12 @@ export const createQuestion = async (req: FileRequest, res: Response) => {
       },
     });
 
-    res.status(201).json(question);
+    res.status(201).json({
+      message: "Question created successfully",
+      question,
+    });
   } catch (error) {
-    console.error("Error creating question:", error);
+    console.error("❌ Error creating question:", error);
     res.status(500).json({ message: "Failed to create question" });
   }
 };
@@ -48,9 +56,9 @@ export const getQuestionsByTopic = async (req: Request, res: Response) => {
       where: { topicId },
     });
 
-    res.json(questions);
+    res.status(200).json(questions);
   } catch (error) {
-    console.error("Error fetching questions:", error);
+    console.error("❌ Error fetching questions:", error);
     res.status(500).json({ message: "Failed to fetch questions" });
   }
 };

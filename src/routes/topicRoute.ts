@@ -1,27 +1,27 @@
-import { Router } from 'express';
+import express from "express";
 import {
   createTopic,
   getAllTopics,
   getTopicById,
   updateTopic,
   deleteTopic,
-} from '../controllers/topicController';
+} from "../controllers/topicController";
 
-const router = Router();
+const router = express.Router();
 
-// Create a new topic
-router.post('/', createTopic);
+// ✅ Create a new topic
+router.post("/", createTopic);
 
-// Get all topics
-router.get('/', getAllTopics);
+// ✅ Get all topics
+router.get("/", getAllTopics);
 
-// Get topic by ID
-router.get('/:topicId', getTopicById);
+// ✅ Get topic by ID
+router.get("/:topicId", getTopicById);
 
-// Update topic by ID
-router.put('/:topicId', updateTopic);
+// ✅ Update topic by ID
+router.put("/:topicId", updateTopic);
 
-// Delete topic by ID
-router.delete('/:topicId', deleteTopic);
+// ✅ Delete topic by ID
+router.delete("/:topicId", deleteTopic);
 
 export default router;

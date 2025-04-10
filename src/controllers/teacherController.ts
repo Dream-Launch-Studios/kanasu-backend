@@ -11,12 +11,11 @@ export const createTeacher = async (
     const { name, phone, cohortId, anganwadiId } = req.body;
 
     if (!name || !phone || !anganwadiId) {
-      return res
-        .status(400)
-        .json({ error: "Name, Phone, and Anganwadi ID are required" });
+      return res.status(400).json({
+        error: "Name, Phone, and Anganwadi ID are required",
+      });
     }
 
-    // Check if a teacher is already assigned to this Anganwadi
     const existingTeacher = await prisma.teacher.findFirst({
       where: { anganwadiId },
     });
@@ -46,7 +45,7 @@ export const createTeacher = async (
 
 // ✅ Get All Teachers
 export const getTeachers = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ) => {
@@ -54,13 +53,74 @@ export const getTeachers = async (
     const teachers = await prisma.teacher.findMany({
       include: { cohort: true, anganwadi: true },
     });
+
     return res.json(teachers);
   } catch (error) {
     next(error);
   }
 };
 
-// ✅ Search Teachers
+// ✅ Get Teacher by ID (with Evaluation Count)
+export const getTeacherById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+
+    const teacher = await prisma.teacher.findUnique({
+      where: { id },
+      include: {
+        cohort: true,
+        anganwadi: true,
+        evaluations: true,
+      },
+    });
+
+    if (!teacher) {
+      return res.status(404).json({ error: "Teacher not found" });
+    }
+
+    return res.json({
+      ...teacher,
+      evaluationCount: teacher.evaluations.length,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ✅ Update Teacher Info
+export const updateTeacher = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, cohortId, anganwadiId } = req.body;
+
+    const updatedTeacher = await prisma.teacher.update({
+      where: { id },
+      data: {
+        name,
+        phone,
+        cohortId,
+        anganwadiId,
+      },
+    });
+
+    return res.json({
+      message: "Teacher updated successfully",
+      teacher: updatedTeacher,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ✅ Search Teachers by name/phone
 export const searchTeachers = async (
   req: Request,
   res: Response,
@@ -87,7 +147,7 @@ export const searchTeachers = async (
   }
 };
 
-// ✅ Delete a Teacher
+// ✅ Delete Teacher
 export const deleteTeacher = async (
   req: Request,
   res: Response,
@@ -104,8 +164,40 @@ export const deleteTeacher = async (
   }
 };
 
-// ✅ Get a single Teacher by ID
-export const getTeacherById = async (
+// ✅ Get Teacher Rankings (Based on #Evaluations — for MVP)
+export const getTeacherRankings = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const teachers = await prisma.teacher.findMany({
+      include: {
+        evaluations: true,
+        anganwadi: true,
+        cohort: true,
+      },
+    });
+
+    const ranked = teachers
+      .map((teacher) => ({
+        id: teacher.id,
+        name: teacher.name,
+        phone: teacher.phone,
+        cohort: teacher.cohort?.name || "Unassigned",
+        anganwadi: teacher.anganwadi?.name || "Unassigned",
+        evaluationsCount: teacher.evaluations.length,
+      }))
+      .sort((a, b) => b.evaluationsCount - a.evaluationsCount);
+
+    return res.json(ranked);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ✅ Get Students Evaluated by a Teacher
+export const getTeacherStudents = async (
   req: Request,
   res: Response,
   next: NextFunction
@@ -113,16 +205,20 @@ export const getTeacherById = async (
   try {
     const { id } = req.params;
 
-    const teacher = await prisma.teacher.findUnique({
-      where: { id },
-      include: { cohort: true, anganwadi: true },
+    const evaluations = await prisma.evaluation.findMany({
+      where: { teacherId: id },
+      include: { student: true },
     });
 
-    if (!teacher) {
-      return res.status(404).json({ error: "Teacher not found" });
-    }
+    const uniqueStudents = new Map();
 
-    return res.json(teacher);
+    evaluations.forEach((e) => {
+      if (!uniqueStudents.has(e.student.id)) {
+        uniqueStudents.set(e.student.id, e.student);
+      }
+    });
+
+    res.json(Array.from(uniqueStudents.values()));
   } catch (error) {
     next(error);
   }

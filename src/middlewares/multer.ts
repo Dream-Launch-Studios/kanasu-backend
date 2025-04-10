@@ -1,15 +1,11 @@
-import multer from 'multer';
-import path from 'path';
-
-// Ensure uploads folder exists or create it
-import fs from 'fs';
-const uploadDir = path.resolve('uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+// middleware/upload.ts
+import multer from "multer";
+import path from "path";
 
 const storage = multer.diskStorage({
-  destination: './uploads',
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
+  destination: "./uploads/",
+  filename: (_, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
   },
 });
 
