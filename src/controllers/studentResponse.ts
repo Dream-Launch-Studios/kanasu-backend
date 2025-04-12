@@ -364,3 +364,90 @@ export const exportResponses = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Failed to export student responses" });
   }
 };
+
+// Score a student response directly
+export const scoreStudentResponse = async (req: Request, res: Response) => {
+  try {
+    const { responseId } = req.params;
+    const { score } = req.body;
+
+    if (score === undefined || score < 0 || score > 10) {
+      return res.status(400).json({ error: "Score must be between 0 and 10" });
+    }
+
+    // Create score record
+    const responseScore = await prisma.studentResponseScore.create({
+      data: {
+        studentResponseId: responseId,
+        score,
+        gradedAt: new Date()
+      },
+      include: {
+        studentResponse: {
+          include: {
+            student: true,
+            question: true
+          }
+        }
+      }
+    });
+
+    res.status(200).json({
+      message: "Response scored successfully",
+      score: responseScore
+    });
+  } catch (error) {
+    console.error("[Score Student Response Error]", error);
+    res.status(500).json({ error: "Failed to score response" });
+  }
+};
+
+// Batch score multiple responses
+export const batchScoreResponses = async (req: Request, res: Response) => {
+  try {
+    const { scores } = req.body;
+    // scores should be array of { responseId: string, score: number }
+
+    if (!Array.isArray(scores)) {
+      return res.status(400).json({ error: "Scores must be an array" });
+    }
+
+    // Validate scores
+    for (const item of scores) {
+      if (item.score === undefined || item.score < 0 || item.score > 10) {
+        return res.status(400).json({ 
+          error: `Invalid score for response ${item.responseId}. Score must be between 0 and 10` 
+        });
+      }
+    }
+
+    // Create all scores in a transaction
+    const results = await prisma.$transaction(
+      scores.map(({ responseId, score }) => 
+        prisma.studentResponseScore.create({
+          data: {
+            studentResponseId: responseId,
+            score,
+            gradedAt: new Date()
+          },
+          include: {
+            studentResponse: {
+              include: {
+                student: true,
+                question: true
+              }
+            }
+          }
+        })
+      )
+    );
+
+    res.status(200).json({
+      message: "Batch scoring completed",
+      results
+    });
+  } catch (error) {
+    console.error("[Batch Score Responses Error]", error);
+    res.status(500).json({ error: "Failed to score responses" });
+  }
+};

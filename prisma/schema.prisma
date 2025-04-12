@@ -82,6 +82,25 @@ model Topic {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
+
+model StudentResponse {
+  id           String   @id @default(uuid()) @db.Uuid
+  evaluationId String?   @db.Uuid
+  questionId   String   @db.Uuid
+  studentId    String   @db.Uuid
+  studentSubmissionId String? @db.Uuid
+
+  startTime    DateTime
+  endTime      DateTime
+  audioUrl     String
+
+  evaluation   Evaluation? @relation(fields: [evaluationId], references: [id])
+  question     Question   @relation(fields: [questionId], references: [id])
+  student      Student    @relation(fields: [studentId], references: [id])
+  studentSubmission StudentSubmission? @relation(fields: [studentSubmissionId], references: [id])
+  StudentResponseScore StudentResponseScore[]
+}
+
 model StudentResponseScore {
   id               String         @id @default(uuid()) @db.Uuid
   studentResponseId String         @db.Uuid
@@ -89,7 +108,6 @@ model StudentResponseScore {
   gradedAt         DateTime       @default(now())
   
   studentResponse  StudentResponse @relation(fields: [studentResponseId], references: [id])
- 
 }
 
 model Question {
@@ -105,6 +123,7 @@ model Question {
   evaluations Evaluation[]  @relation("EvaluationQuestions")
   responses   StudentResponse[]
 }
+
 model Evaluation {
   id          String     @id @default(uuid()) @db.Uuid
   teacherId   String     @db.Uuid
@@ -128,26 +147,6 @@ model Evaluation {
 
   AssessmentSession AssessmentSession[]
 }
-
-model StudentResponse {
-  id           String   @id @default(uuid()) @db.Uuid
-  evaluationId String   @db.Uuid
-  questionId   String   @db.Uuid
-  studentId    String   @db.Uuid
-  studentSubmissionId String? @db.Uuid
-
-  startTime    DateTime
-  endTime      DateTime
-  audioUrl     String
-
-  evaluation   Evaluation @relation(fields: [evaluationId], references: [id])
-  question     Question   @relation(fields: [questionId], references: [id])
-  student      Student    @relation(fields: [studentId], references: [id])
-  studentSubmission StudentSubmission? @relation(fields: [studentSubmissionId], references: [id])
-
-  StudentResponseScore StudentResponseScore[]
-}
-
 
 model RegionalCoordinator {
   id        String   @id @default(uuid()) @db.Uuid
@@ -184,6 +183,7 @@ model AnganwadiAssessment {
   
   assessmentSession   AssessmentSession @relation(fields: [assessmentSessionId], references: [id])
   anganwadi           Anganwadi         @relation(fields: [anganwadiId], references: [id])
+  studentSubmissions   StudentSubmission[]
   
   @@unique([assessmentSessionId, anganwadiId])
 }
@@ -193,8 +193,8 @@ model StudentSubmission {
   assessmentSessionId  String           @db.Uuid
   anganwadiId         String           @db.Uuid
   studentId           String           @db.Uuid
-  teacherId           String           @db.Uuid
-  submissionStatus    String           @default("COMPLETED") // Changed default to COMPLETED since we only create records when complete
+  teacherId           String           @db.Uuid 
+  submissionStatus    String           @default("COMPLETED")
   submittedAt         DateTime         @default(now())
   
   assessmentSession   AssessmentSession @relation(fields: [assessmentSessionId], references: [id])
@@ -202,6 +202,7 @@ model StudentSubmission {
   student             Student           @relation(fields: [studentId], references: [id])
   teacher             Teacher           @relation(fields: [teacherId], references: [id])
   responses           StudentResponse[]
+  anganwadiAssessment AnganwadiAssessment @relation(fields: [assessmentSessionId, anganwadiId], references: [assessmentSessionId, anganwadiId])
 }
 
 enum Role {

@@ -7,7 +7,8 @@ import {
   recordStudentSubmission,
   publishGlobalAssessment,
   completeGlobalAssessment,
-  getActiveAssessmentsForAnganwadi
+  getActiveAssessmentsForAnganwadi,
+  getSubmissionById
 } from "../controllers/globalAssessmentController";
 
 const router = express.Router();
@@ -26,6 +27,9 @@ router.get("/:id", getGlobalAssessmentById);
 
 // Get submissions for a specific anganwadi
 router.get("/:assessmentId/anganwadi/:anganwadiId", getAnganwadiSubmissions);
+
+// Get a specific submission
+router.get("/:assessmentId/submissions/:submissionId", getSubmissionById);
 
 // Record a student submission
 router.post("/:assessmentId/student/:studentId", recordStudentSubmission);

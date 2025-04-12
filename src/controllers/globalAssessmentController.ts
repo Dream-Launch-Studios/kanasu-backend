@@ -1,5 +1,49 @@
 import type { Request, Response } from "express";
 import prisma from "../config/prisma";
+import { Prisma } from "@prisma/client";
+
+type AssessmentStats = {
+  totalAnganwadis: number;
+  completedAnganwadis: number;
+  anganwadiCompletionPercentage: number;
+  totalStudents: number;
+  completedStudents: number;
+  studentCompletionPercentage: number;
+  gradedStudents: number;
+};
+
+type AssessmentWithFullStats = {
+  id: string;
+  name: string;
+  description: string | null;
+  startDate: Date;
+  endDate: Date;
+  isActive: boolean;
+  status: string;
+  topicIds: string[];
+  anganwadiAssessments: {
+    id: string;
+    isComplete: boolean;
+    totalStudentCount: number;
+    completedStudentCount: number;
+    anganwadi: {
+      id: string;
+      name: string;
+    };
+    studentSubmissions: {
+      id: string;
+      responses: {
+        id: string;
+        StudentResponseScore: {
+          id: string;
+          score: number;
+          gradedAt: Date;
+        }[];
+      }[];
+    }[];
+  }[];
+  stats: AssessmentStats;
+};
 
 /**
  * Create a new global assessment session
@@ -93,30 +137,56 @@ export const getGlobalAssessments = async (_req: Request, res: Response) => {
   try {
     const assessments = await prisma.assessmentSession.findMany({
       include: {
-        anganwadiAssessments: true,
+        anganwadiAssessments: {
+          include: {
+            anganwadi: true,
+            studentSubmissions: {
+              include: {
+                student: true,
+                responses: {
+                  include: {
+                    StudentResponseScore: true
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       orderBy: {
         startDate: "desc",
       },
     });
 
-    // Calculate completion statistics
     const assessmentsWithStats = assessments.map((assessment) => {
+      // Calculate anganwadi stats
       const totalAnganwadis = assessment.anganwadiAssessments.length;
       const completedAnganwadis = assessment.anganwadiAssessments.filter(
         (a) => a.isComplete
       ).length;
 
+      // Calculate student stats
       const totalStudents = assessment.anganwadiAssessments.reduce(
         (sum, a) => sum + a.totalStudentCount,
         0
       );
+
       const completedStudents = assessment.anganwadiAssessments.reduce(
         (sum, a) => sum + a.completedStudentCount,
         0
       );
 
-      return {
+      // Calculate graded students (students whose responses have all been scored)
+      const gradedStudents = assessment.anganwadiAssessments.reduce((sum, anganwadi) => {
+        const gradedSubmissions = anganwadi.studentSubmissions.filter(submission => 
+          submission.responses.length > 0 && submission.responses.every(response => 
+            response.StudentResponseScore && response.StudentResponseScore.length > 0
+          )
+        );
+        return sum + gradedSubmissions.length;
+      }, 0);
+
+      const result: AssessmentWithFullStats = {
         ...assessment,
         stats: {
           totalAnganwadis,
@@ -129,8 +199,10 @@ export const getGlobalAssessments = async (_req: Request, res: Response) => {
           studentCompletionPercentage: totalStudents
             ? Math.round((completedStudents / totalStudents) * 100)
             : 0,
+          gradedStudents,
         },
       };
+      return result;
     });
 
     res.status(200).json(assessmentsWithStats);
@@ -153,6 +225,16 @@ export const getGlobalAssessmentById = async (req: Request, res: Response) => {
         anganwadiAssessments: {
           include: {
             anganwadi: true,
+            studentSubmissions: {
+              include: {
+                student: true,
+                responses: {
+                  include: {
+                    StudentResponseScore: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -189,6 +271,23 @@ export const getGlobalAssessmentById = async (req: Request, res: Response) => {
       0
     );
 
+    // Calculate graded students count
+    const gradedStudents = assessment.anganwadiAssessments.reduce(
+      (sum, anganwadi) => {
+        const gradedSubmissions = anganwadi.studentSubmissions.filter(
+          (submission) => {
+            return submission.responses.every(
+              (response) =>
+                response.StudentResponseScore &&
+                response.StudentResponseScore.length > 0
+            );
+          }
+        );
+        return sum + gradedSubmissions.length;
+      },
+      0
+    );
+
     const result = {
       ...assessment,
       topics,
@@ -203,6 +302,7 @@ export const getGlobalAssessmentById = async (req: Request, res: Response) => {
         studentCompletionPercentage: totalStudents
           ? Math.round((completedStudents / totalStudents) * 100)
           : 0,
+        gradedStudents,
       },
     };
 
@@ -282,6 +382,31 @@ export const recordStudentSubmission = async (req: Request, res: Response) => {
       return res
         .status(404)
         .json({ error: "This anganwadi is not part of this assessment" });
+    }
+
+    // Verify that the student belongs to this anganwadi
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+    });
+
+    if (!student || student.anganwadiId !== anganwadiId) {
+      return res.status(400).json({
+        error: "Student does not belong to the specified anganwadi",
+      });
+    }
+
+    // Check for existing submission
+    const existingSubmission = await prisma.studentSubmission.findFirst({
+      where: {
+        assessmentSessionId: assessmentId,
+        studentId,
+      },
+    });
+
+    if (existingSubmission) {
+      return res.status(400).json({
+        error: "Student has already submitted for this assessment",
+      });
     }
 
     // Create a new student submission record
@@ -492,6 +617,61 @@ export const getActiveAssessmentsForAnganwadi = async (
     res.status(200).json(assessmentsWithTopics);
   } catch (error) {
     console.error("[Get Active Assessments For Anganwadi Error]", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+/**
+ * Get a specific submission by ID
+ */
+export const getSubmissionById = async (req: Request, res: Response) => {
+  try {
+    const { assessmentId, submissionId } = req.params;
+
+    // First check if the assessment exists
+    const assessment = await prisma.assessmentSession.findUnique({
+      where: { id: assessmentId },
+    });
+
+    if (!assessment) {
+      return res.status(404).json({ error: "Assessment not found" });
+    }
+
+    // Get the submission with related data
+    const submission = await prisma.studentSubmission.findUnique({
+      where: { id: submissionId },
+      include: {
+        student: true,
+        teacher: true,
+        responses: {
+          include: {
+            question: true,
+            StudentResponseScore: {
+              orderBy: {
+                gradedAt: "desc",
+              },
+              take: 1,
+            },
+          },
+        },
+        assessmentSession: true,
+      },
+    });
+
+    if (!submission) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    // Verify this submission belongs to the specified assessment
+    if (submission.assessmentSessionId !== assessmentId) {
+      return res
+        .status(404)
+        .json({ error: "Submission not found in this assessment" });
+    }
+
+    res.status(200).json(submission);
+  } catch (error) {
+    console.error("[Get Submission By ID Error]", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
