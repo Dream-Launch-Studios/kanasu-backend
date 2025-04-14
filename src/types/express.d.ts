@@ -2,10 +2,10 @@
 declare namespace Express {
     interface Request {
       user?: {
-        name: string;
         id: string;
+        name: string;
         role: string;
-        
+        anganwadiId?: string | null;
       };
     }
   }

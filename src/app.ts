@@ -15,6 +15,7 @@ import studentResponseRouter from "./routes/studentResponseRoute";
 import assessmentSessionRouter from "./routes/assessmentSessionRoute";
 import csvImportRouter from "./routes/csvImportRoute";
 import globalAssessmentRouter from "./routes/globalAssessmentRoute";
+import teacherAuthRoutes from "./routes/teacherAuthRoutes";
 
 const app = express();
 
@@ -35,5 +36,6 @@ app.use("/api/student-responses", studentResponseRouter);
 app.use("/api/assessment-sessions", assessmentSessionRouter);
 app.use("/api/csv-import", csvImportRouter);
 app.use("/api/global-assessments", globalAssessmentRouter);
+app.use("/api/teacher-auth", teacherAuthRoutes);
 
 export default app;

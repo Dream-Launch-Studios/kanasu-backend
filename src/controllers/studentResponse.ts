@@ -1,7 +1,14 @@
 // controllers/studentResponseController.ts
 import type { Request, Response } from "express";
 import prisma from "../config/prisma";
+import { uploadToCloudinary } from "../utils/cloudinary";
+import fs from "fs";
 
+interface FileRequest extends Request {
+  files?: {
+    [fieldname: string]: Express.Multer.File[];
+  };
+}
 // ✅ Create a student response
 export const createStudentResponse = async (req: Request, res: Response) => {
   try {
@@ -33,7 +40,10 @@ export const createStudentResponse = async (req: Request, res: Response) => {
 };
 
 // Batch create multiple student responses
-export const batchCreateStudentResponses = async (req: Request, res: Response) => {
+export const batchCreateStudentResponses = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const { responses } = req.body;
 
@@ -43,8 +53,15 @@ export const batchCreateStudentResponses = async (req: Request, res: Response) =
 
     // Create all responses in a transaction
     const createdResponses = await prisma.$transaction(
-      responses.map(response => {
-        const { evaluationId, questionId, studentId, startTime, endTime, audioUrl } = response;
+      responses.map((response) => {
+        const {
+          evaluationId,
+          questionId,
+          studentId,
+          startTime,
+          endTime,
+          audioUrl,
+        } = response;
         return prisma.studentResponse.create({
           data: {
             evaluationId,
@@ -53,14 +70,14 @@ export const batchCreateStudentResponses = async (req: Request, res: Response) =
             startTime: new Date(startTime),
             endTime: new Date(endTime),
             audioUrl,
-          }
+          },
         });
       })
     );
 
-    res.status(201).json({ 
-      message: `${createdResponses.length} responses saved successfully`, 
-      responses: createdResponses 
+    res.status(201).json({
+      message: `${createdResponses.length} responses saved successfully`,
+      responses: createdResponses,
     });
   } catch (error) {
     console.error("❌ Error creating batch student responses:", error);
@@ -78,7 +95,7 @@ export const getResponsesByStudent = async (req: Request, res: Response) => {
       include: {
         question: true,
         evaluation: true,
-        StudentResponseScore: true
+        StudentResponseScore: true,
       },
     });
 
@@ -99,7 +116,7 @@ export const getResponsesByEvaluation = async (req: Request, res: Response) => {
       include: {
         question: true,
         student: true,
-        StudentResponseScore: true
+        StudentResponseScore: true,
       },
     });
 
@@ -114,7 +131,7 @@ export const getResponsesByEvaluation = async (req: Request, res: Response) => {
 export const getScoredResponses = async (req: Request, res: Response) => {
   try {
     const { evaluationId } = req.query;
-    
+
     // Build where clause based on provided filters
     const whereClause: any = {};
     if (evaluationId) {
@@ -126,22 +143,22 @@ export const getScoredResponses = async (req: Request, res: Response) => {
       where: {
         ...whereClause,
         StudentResponseScore: {
-          some: {} // Has at least one score
-        }
+          some: {}, // Has at least one score
+        },
       },
       include: {
         question: true,
         student: true,
         evaluation: {
           include: {
-            topic: true
-          }
+            topic: true,
+          },
         },
         StudentResponseScore: {
           orderBy: {
-            gradedAt: 'desc'
-          }
-        }
+            gradedAt: "desc",
+          },
+        },
       },
     });
 
@@ -165,14 +182,14 @@ export const getResponseById = async (req: Request, res: Response) => {
         evaluation: {
           include: {
             topic: true,
-            teacher: true
-          }
+            teacher: true,
+          },
         },
         StudentResponseScore: {
           orderBy: {
-            gradedAt: 'desc'
-          }
-        }
+            gradedAt: "desc",
+          },
+        },
       },
     });
 
@@ -188,15 +205,18 @@ export const getResponseById = async (req: Request, res: Response) => {
 };
 
 // Submit a batch of responses with evaluation metadata at once (for teacher app)
-export const submitTeacherBatchResponses = async (req: Request, res: Response) => {
+export const submitTeacherBatchResponses = async (
+  req: Request,
+  res: Response
+) => {
   try {
-    const { 
-      evaluationData, 
+    const {
+      evaluationData,
       responses,
       teacherId,
       studentId,
       topicId,
-      assessmentSessionId
+      assessmentSessionId,
     } = req.body;
 
     if (!responses || !Array.isArray(responses) || responses.length === 0) {
@@ -204,7 +224,9 @@ export const submitTeacherBatchResponses = async (req: Request, res: Response) =
     }
 
     if (!teacherId || !studentId || !topicId) {
-      return res.status(400).json({ error: "Teacher, student, and topic information are required" });
+      return res.status(400).json({
+        error: "Teacher, student, and topic information are required",
+      });
     }
 
     // Start a transaction to ensure all operations succeed together
@@ -221,12 +243,14 @@ export const submitTeacherBatchResponses = async (req: Request, res: Response) =
           status: "SUBMITTED", // Auto-submit from teacher app
           submittedAt: new Date(),
           // Connect to session if provided
-          ...(assessmentSessionId ? {
-            AssessmentSession: {
-              connect: { id: assessmentSessionId }
-            }
-          } : {})
-        }
+          ...(assessmentSessionId
+            ? {
+                AssessmentSession: {
+                  connect: { id: assessmentSessionId },
+                },
+              }
+            : {}),
+        },
       });
 
       // 2. Create all student responses linked to this evaluation
@@ -240,7 +264,7 @@ export const submitTeacherBatchResponses = async (req: Request, res: Response) =
               startTime: new Date(response.startTime || Date.now()),
               endTime: new Date(response.endTime || Date.now()),
               audioUrl: response.audioUrl || "",
-            }
+            },
           });
         })
       );
@@ -248,10 +272,10 @@ export const submitTeacherBatchResponses = async (req: Request, res: Response) =
       return { evaluation, responses: createdResponses };
     });
 
-    res.status(201).json({ 
-      message: "Exam submitted successfully", 
+    res.status(201).json({
+      message: "Exam submitted successfully",
       evaluationId: result.evaluation.id,
-      responseCount: result.responses.length
+      responseCount: result.responses.length,
     });
   } catch (error) {
     console.error("❌ Error submitting teacher batch responses:", error);
@@ -262,40 +286,41 @@ export const submitTeacherBatchResponses = async (req: Request, res: Response) =
 // Export student responses as CSV
 export const exportResponses = async (req: Request, res: Response) => {
   try {
-    const { studentId, evaluationId, startDate, endDate, teacherId } = req.query;
+    const { studentId, evaluationId, startDate, endDate, teacherId } =
+      req.query;
 
     // Build where clause based on provided filters
     const whereClause: any = {};
-    
+
     if (studentId) {
       whereClause.studentId = studentId as string;
     }
-    
+
     if (evaluationId) {
       whereClause.evaluationId = evaluationId as string;
     }
-    
+
     // If teacher ID provided, only include evaluations from this teacher
     if (teacherId) {
       // Get all evaluations for this teacher
       const teacherEvaluations = await prisma.evaluation.findMany({
         where: { teacherId: teacherId as string },
-        select: { id: true }
+        select: { id: true },
       });
-      
-      const evaluationIds = teacherEvaluations.map(ev => ev.id);
-      
+
+      const evaluationIds = teacherEvaluations.map((ev) => ev.id);
+
       // Filter by these evaluation IDs
       whereClause.evaluationId = { in: evaluationIds };
     }
-    
+
     if (startDate) {
       whereClause.createdAt = {
         ...(whereClause.createdAt || {}),
         gte: new Date(startDate as string),
       };
     }
-    
+
     if (endDate) {
       whereClause.createdAt = {
         ...(whereClause.createdAt || {}),
@@ -311,57 +336,74 @@ export const exportResponses = async (req: Request, res: Response) => {
         question: true,
         evaluation: {
           include: {
-            topic: true
-          }
+            topic: true,
+          },
         },
         StudentResponseScore: {
           orderBy: {
-            gradedAt: 'desc'
+            gradedAt: "desc",
           },
-          take: 1
-        }
+          take: 1,
+        },
       },
       orderBy: {
-        createdAt: 'desc'
-      }
+        createdAt: "desc",
+      },
     });
 
     // Create CSV headers
     const headers = [
-      'ID',
-      'Student Name',
-      'Question',
-      'Topic',
-      'Audio URL',
-      'Score',
-      'Start Time',
-      'End Time'
-    ].join(',');
+      "ID",
+      "Student Name",
+      "Question",
+      "Topic",
+      "Audio URL",
+      "Score",
+      "Start Time",
+      "End Time",
+    ].join(",");
 
     // Create CSV rows
-    const rows = responses.map(response => [
-      response.id,
-      response.student?.name || 'Unknown Student',
-      `"${(response.question?.text || 'Unknown Question').replace(/"/g, '""')}"`,
-      `"${(response.evaluation?.topic?.name || 'Unknown Topic').replace(/"/g, '""')}"`,
-      response.audioUrl || '',
-      response.StudentResponseScore?.length > 0 ? response.StudentResponseScore[0].score + '%' : 'Not scored',
-      new Date(response.startTime).toLocaleString(),
-      new Date(response.endTime).toLocaleString()
-    ].join(','));
+    const rows = responses.map((response) =>
+      [
+        response.id,
+        response.student?.name || "Unknown Student",
+        `"${(response.question?.text || "Unknown Question").replace(
+          /"/g,
+          '""'
+        )}"`,
+        `"${(response.evaluation?.topic?.name || "Unknown Topic").replace(
+          /"/g,
+          '""'
+        )}"`,
+        response.audioUrl || "",
+        response.StudentResponseScore?.length > 0
+          ? response.StudentResponseScore[0].score + "%"
+          : "Not scored",
+        new Date(response.startTime).toLocaleString(),
+        new Date(response.endTime).toLocaleString(),
+      ].join(",")
+    );
 
     // Combine headers and rows
-    const csv = [headers, ...rows].join('\n');
+    const csv = [headers, ...rows].join("\n");
 
     // Set headers for CSV download
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=student-responses-${new Date().toISOString().slice(0, 10)}.csv`);
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=student-responses-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`
+    );
 
     // Send the CSV
     return res.send(csv);
   } catch (error) {
     console.error("❌ Error exporting student responses:", error);
-    return res.status(500).json({ error: "Failed to export student responses" });
+    return res
+      .status(500)
+      .json({ error: "Failed to export student responses" });
   }
 };
 
@@ -380,21 +422,21 @@ export const scoreStudentResponse = async (req: Request, res: Response) => {
       data: {
         studentResponseId: responseId,
         score,
-        gradedAt: new Date()
+        gradedAt: new Date(),
       },
       include: {
         studentResponse: {
           include: {
             student: true,
-            question: true
-          }
-        }
-      }
+            question: true,
+          },
+        },
+      },
     });
 
     res.status(200).json({
       message: "Response scored successfully",
-      score: responseScore
+      score: responseScore,
     });
   } catch (error) {
     console.error("[Score Student Response Error]", error);
@@ -415,39 +457,191 @@ export const batchScoreResponses = async (req: Request, res: Response) => {
     // Validate scores
     for (const item of scores) {
       if (item.score === undefined || item.score < 0 || item.score > 10) {
-        return res.status(400).json({ 
-          error: `Invalid score for response ${item.responseId}. Score must be between 0 and 10` 
+        return res.status(400).json({
+          error: `Invalid score for response ${item.responseId}. Score must be between 0 and 10`,
         });
       }
     }
 
     // Create all scores in a transaction
     const results = await prisma.$transaction(
-      scores.map(({ responseId, score }) => 
+      scores.map(({ responseId, score }) =>
         prisma.studentResponseScore.create({
           data: {
             studentResponseId: responseId,
             score,
-            gradedAt: new Date()
+            gradedAt: new Date(),
           },
           include: {
             studentResponse: {
               include: {
                 student: true,
-                question: true
-              }
-            }
-          }
+                question: true,
+              },
+            },
+          },
         })
       )
     );
 
     res.status(200).json({
       message: "Batch scoring completed",
-      results
+      results,
     });
   } catch (error) {
     console.error("[Batch Score Responses Error]", error);
     res.status(500).json({ error: "Failed to score responses" });
+  }
+};
+
+// NEW: Submit student audio responses from mobile app
+export const submitAudioResponses = async (req: Request, res: Response) => {
+  try {
+    const { assessmentId, studentId, responses } = req.body;
+
+    if (
+      !assessmentId ||
+      !studentId ||
+      !responses ||
+      !Array.isArray(responses)
+    ) {
+      return res.status(400).json({
+        error:
+          "Missing required data. Please provide assessmentId, studentId, and responses array.",
+      });
+    }
+
+    // Validate the responses format
+    for (const response of responses) {
+      if (!response.questionId || !response.startTime || !response.endTime) {
+        return res.status(400).json({
+          error:
+            "Each response must include questionId, startTime, and endTime",
+          invalid: response,
+        });
+      }
+    }
+
+    // Find the active assessment session
+    const assessmentSession = await prisma.assessmentSession.findUnique({
+      where: { id: assessmentId },
+      include: { anganwadiAssessments: true },
+    });
+
+    if (!assessmentSession) {
+      return res.status(404).json({ error: "Assessment not found" });
+    }
+
+    // Get student data
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: { anganwadi: true },
+    });
+
+    if (!student || !student.anganwadiId) {
+      return res.status(404).json({
+        error: "Student not found or not associated with an anganwadi",
+      });
+    }
+
+    // Check if anganwadi is part of this assessment
+    const anganwadiAssessment = assessmentSession.anganwadiAssessments.find(
+      (aa) => aa.anganwadiId === student.anganwadiId
+    );
+
+    if (!anganwadiAssessment) {
+      return res.status(400).json({
+        error: "This student's anganwadi is not part of the assessment",
+      });
+    }
+
+    // Get teacher associated with this anganwadi
+    const teacher = await prisma.teacher.findFirst({
+      where: { anganwadiId: student.anganwadiId },
+    });
+
+    if (!teacher) {
+      return res.status(404).json({
+        error: "No teacher found for this anganwadi",
+      });
+    }
+
+    // Create a transaction to ensure all operations succeed or fail together
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Create a student submission record
+      const submission = await tx.studentSubmission.create({
+        data: {
+          assessmentSessionId: assessmentId,
+          anganwadiId: student.anganwadiId,
+          studentId: studentId,
+          teacherId: teacher.id,
+          submissionStatus: "COMPLETED",
+          submittedAt: new Date(),
+        },
+      });
+
+      // 2. Create all the student responses
+      const createdResponses = await Promise.all(
+        responses.map(async (response: any) => {
+          return tx.studentResponse.create({
+            data: {
+              questionId: response.questionId,
+              studentId: studentId,
+              studentSubmissionId: submission.id,
+              startTime: new Date(response.startTime),
+              endTime: new Date(response.endTime),
+              audioUrl: response.audioUrl || "",
+            },
+          });
+        })
+      );
+
+      // 3. Update the AnganwadiAssessment completion statistics
+      await tx.anganwadiAssessment.update({
+        where: {
+          assessmentSessionId_anganwadiId: {
+            assessmentSessionId: assessmentId,
+            anganwadiId: student.anganwadiId,
+          },
+        },
+        data: {
+          completedStudentCount: {
+            increment: 1,
+          },
+        },
+      });
+
+      return { submission, responses: createdResponses };
+    });
+
+    res.status(201).json({
+      message: "Audio responses submitted successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("❌ Error submitting audio responses:", error);
+    res.status(500).json({ error: "Failed to submit responses" });
+  }
+};
+
+export const uploadAudioFromMobile = async (
+  req: FileRequest,
+  res: Response
+) => {
+  try {
+    const audioFile = req.files?.audio?.[0];
+
+    if (!audioFile) {
+      return res.status(400).json({ message: "Audio file is required." });
+    }
+
+    const audioUpload = await uploadToCloudinary(audioFile.path, "audio");
+
+    fs.unlinkSync(audioFile.path); // cleanup
+
+    return res.status(200).json({ audioUrl: audioUpload.secure_url });
+  } catch (error) {
+    console.error("❌ Error uploading audio:", error);
+    return res.status(500).json({ message: "Failed to upload audio" });
   }
 };

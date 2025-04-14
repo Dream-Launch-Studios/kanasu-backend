@@ -8,7 +8,8 @@ import {
   publishGlobalAssessment,
   completeGlobalAssessment,
   getActiveAssessmentsForAnganwadi,
-  getSubmissionById
+  getSubmissionById,
+  submitBulkResponses,
 } from "../controllers/globalAssessmentController";
 
 const router = express.Router();
@@ -40,4 +41,7 @@ router.patch("/:id/publish", publishGlobalAssessment);
 // Complete a global assessment
 router.patch("/:id/complete", completeGlobalAssessment);
 
-export default router; 
+// Submit bulk responses
+router.post("/bulk", submitBulkResponses);
+
+export default router;

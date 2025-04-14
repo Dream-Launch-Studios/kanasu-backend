@@ -7,8 +7,12 @@ import {
   batchCreateQuestions,
   getAllQuestions,
   getQuestionWithStats,
-  getQuestionById
+  getQuestionById,
 } from "../controllers/questionController";
+import { authMiddleware } from "../middlewares/authMiddleware";
+import { uploadToCloudinary } from "../utils/cloudinary";
+import fs from "fs";
+import type { Response } from "express";
 
 const router = express.Router();
 
@@ -42,5 +46,35 @@ router.get("/:id/stats", getQuestionWithStats);
 
 // Get a single question by ID (generic route last)
 router.get("/:id", getQuestionById);
+
+// Add a route for audio uploads
+router.post(
+  "/upload-audio",
+  authMiddleware(["TEACHER", "ADMIN"]),
+  upload.fields([{ name: "file", maxCount: 1 }]),
+  async (req: FileRequest, res: Response) => {
+    try {
+      const audioFile = req.files?.file?.[0];
+
+      if (!audioFile) {
+        return res.status(400).json({ message: "Audio file is required." });
+      }
+
+      // Upload to Cloudinary
+      const audioUpload = await uploadToCloudinary(audioFile.path, "audio");
+
+      // Clean up local file
+      fs.unlinkSync(audioFile.path);
+
+      res.status(200).json({
+        message: "Audio uploaded successfully",
+        audioUrl: audioUpload.secure_url,
+      });
+    } catch (error) {
+      console.error("❌ Error uploading audio:", error);
+      res.status(500).json({ message: "Failed to upload audio" });
+    }
+  }
+);
 
 export default router;

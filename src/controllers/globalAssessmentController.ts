@@ -145,13 +145,13 @@ export const getGlobalAssessments = async (_req: Request, res: Response) => {
                 student: true,
                 responses: {
                   include: {
-                    StudentResponseScore: true
-                  }
-                }
-              }
-            }
-          }
-        }
+                    StudentResponseScore: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       orderBy: {
         startDate: "desc",
@@ -177,14 +177,21 @@ export const getGlobalAssessments = async (_req: Request, res: Response) => {
       );
 
       // Calculate graded students (students whose responses have all been scored)
-      const gradedStudents = assessment.anganwadiAssessments.reduce((sum, anganwadi) => {
-        const gradedSubmissions = anganwadi.studentSubmissions.filter(submission => 
-          submission.responses.length > 0 && submission.responses.every(response => 
-            response.StudentResponseScore && response.StudentResponseScore.length > 0
-          )
-        );
-        return sum + gradedSubmissions.length;
-      }, 0);
+      const gradedStudents = assessment.anganwadiAssessments.reduce(
+        (sum, anganwadi) => {
+          const gradedSubmissions = anganwadi.studentSubmissions.filter(
+            (submission) =>
+              submission.responses.length > 0 &&
+              submission.responses.every(
+                (response) =>
+                  response.StudentResponseScore &&
+                  response.StudentResponseScore.length > 0
+              )
+          );
+          return sum + gradedSubmissions.length;
+        },
+        0
+      );
 
       const result: AssessmentWithFullStats = {
         ...assessment,
@@ -621,9 +628,6 @@ export const getActiveAssessmentsForAnganwadi = async (
   }
 };
 
-/**
- * Get a specific submission by ID
- */
 export const getSubmissionById = async (req: Request, res: Response) => {
   try {
     const { assessmentId, submissionId } = req.params;
@@ -673,5 +677,51 @@ export const getSubmissionById = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("[Get Submission By ID Error]", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// Submit multiple student responses in bulk
+export const submitBulkResponses = async (req: Request, res: Response) => {
+  try {
+    const { responses } = req.body;
+
+    if (!Array.isArray(responses) || responses.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "Valid responses array is required" });
+    }
+
+    // Create all responses in a transaction
+    const createdResponses = await prisma.$transaction(
+      responses.map((response) => {
+        const {
+          evaluationId,
+          questionId,
+          studentId,
+          startTime,
+          endTime,
+          audioUrl,
+        } = response;
+
+        return prisma.studentResponse.create({
+          data: {
+            evaluationId: evaluationId || undefined, // Make evaluationId optional
+            questionId,
+            studentId,
+            startTime: new Date(startTime),
+            endTime: new Date(endTime),
+            audioUrl,
+          },
+        });
+      })
+    );
+
+    res.status(201).json({
+      message: `${createdResponses.length} responses submitted successfully`,
+      responses: createdResponses,
+    });
+  } catch (error) {
+    console.error("[Submit Bulk Responses Error]", error);
+    res.status(500).json({ error: "Failed to submit responses" });
   }
 };
