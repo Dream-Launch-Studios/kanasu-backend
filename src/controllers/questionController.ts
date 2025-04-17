@@ -11,7 +11,7 @@ interface FileRequest extends Request {
 
 export const createQuestion = async (req: FileRequest, res: Response) => {
   try {
-    const { topicId, text } = req.body;
+    const { topicId, text, answerOptions, correctAnswer } = req.body;
     const imageFile = req.files?.image?.[0];
     const audioFile = req.files?.audio?.[0];
 
@@ -19,6 +19,23 @@ export const createQuestion = async (req: FileRequest, res: Response) => {
       return res
         .status(400)
         .json({ message: "Image and audio files are required." });
+    }
+
+    // Validate answer options (if provided)
+    let validatedAnswerOptions: string[] = [];
+    let validatedCorrectAnswer: number | null = null;
+    
+    if (answerOptions && Array.isArray(answerOptions)) {
+      // Ensure we have at most 4 answer options
+      validatedAnswerOptions = answerOptions.slice(0, 4);
+      
+      // Validate correctAnswer is within range
+      if (correctAnswer !== undefined && correctAnswer !== null) {
+        const correctAnswerIndex = parseInt(correctAnswer as any);
+        if (!isNaN(correctAnswerIndex) && correctAnswerIndex >= 0 && correctAnswerIndex < validatedAnswerOptions.length) {
+          validatedCorrectAnswer = correctAnswerIndex;
+        }
+      }
     }
 
     // Upload to Cloudinary
@@ -35,6 +52,8 @@ export const createQuestion = async (req: FileRequest, res: Response) => {
         topicId,
         imageUrl: imageUpload.secure_url,
         audioUrl: audioUpload.secure_url,
+        answerOptions: validatedAnswerOptions,
+        correctAnswer: validatedCorrectAnswer,
       },
     });
 
@@ -67,6 +86,8 @@ export const getQuestionsByTopic = async (req: Request, res: Response) => {
 export const getQuestionsByAssessmentSession = async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
+    // Check if request is from admin (assuming some auth middleware adds this)
+    const isAdminRequest = req.headers['x-user-role'] === 'ADMIN';
 
     // Get the assessment session with topic IDs
     const session = await prisma.assessmentSession.findUnique({
@@ -94,7 +115,16 @@ export const getQuestionsByAssessmentSession = async (req: Request, res: Respons
       }
     });
 
-    res.status(200).json(questions);
+    // For non-admin requests, remove the answer options
+    const sanitizedQuestions = isAdminRequest 
+      ? questions 
+      : questions.map(question => {
+          // Create a new object without answerOptions and correctAnswer
+          const { answerOptions, correctAnswer, ...questionData } = question;
+          return questionData;
+        });
+
+    res.status(200).json(sanitizedQuestions);
   } catch (error) {
     console.error("❌ Error fetching questions for session:", error);
     res.status(500).json({ message: "Failed to fetch questions" });
@@ -114,7 +144,24 @@ export const batchCreateQuestions = async (req: FileRequest, res: Response) => {
     const createdQuestions = [];
     
     for (const questionData of questions) {
-      const { topicId, text, imageUrl, audioUrl } = questionData;
+      const { topicId, text, imageUrl, audioUrl, answerOptions, correctAnswer } = questionData;
+      
+      // Validate answer options
+      let validatedAnswerOptions: string[] = [];
+      let validatedCorrectAnswer: number | null = null;
+      
+      if (answerOptions && Array.isArray(answerOptions)) {
+        // Ensure we have at most 4 answer options
+        validatedAnswerOptions = answerOptions.slice(0, 4);
+        
+        // Validate correctAnswer is within range
+        if (correctAnswer !== undefined && correctAnswer !== null) {
+          const correctAnswerIndex = parseInt(correctAnswer as any);
+          if (!isNaN(correctAnswerIndex) && correctAnswerIndex >= 0 && correctAnswerIndex < validatedAnswerOptions.length) {
+            validatedCorrectAnswer = correctAnswerIndex;
+          }
+        }
+      }
       
       // Create the question
       const question = await prisma.question.create({
@@ -123,6 +170,8 @@ export const batchCreateQuestions = async (req: FileRequest, res: Response) => {
           topicId,
           imageUrl: imageUrl || "",
           audioUrl: audioUrl || "",
+          answerOptions: validatedAnswerOptions,
+          correctAnswer: validatedCorrectAnswer,
         },
       });
       
@@ -143,6 +192,8 @@ export const batchCreateQuestions = async (req: FileRequest, res: Response) => {
 export const getAllQuestions = async (req: Request, res: Response) => {
   try {
     const { topic, search } = req.query;
+    // Check if request is from admin (assuming some auth middleware adds this)
+    const isAdminRequest = req.headers['x-user-role'] === 'ADMIN';
     
     // Build where clause based on filters
     const whereClause: any = {};
@@ -168,7 +219,16 @@ export const getAllQuestions = async (req: Request, res: Response) => {
       }
     });
     
-    res.status(200).json(questions);
+    // For non-admin requests, remove the answer options
+    const sanitizedQuestions = isAdminRequest 
+      ? questions 
+      : questions.map(question => {
+          // Create a new object without answerOptions and correctAnswer
+          const { answerOptions, correctAnswer, ...questionData } = question;
+          return questionData;
+        });
+    
+    res.status(200).json(sanitizedQuestions);
   } catch (error) {
     console.error("❌ Error fetching questions:", error);
     res.status(500).json({ message: "Failed to fetch questions" });

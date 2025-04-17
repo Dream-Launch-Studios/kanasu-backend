@@ -12,7 +12,7 @@ import {
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { uploadToCloudinary } from "../utils/cloudinary";
 import fs from "fs";
-import type { Response } from "express";
+import type { Response, Request } from "express";
 
 const router = express.Router();
 
@@ -77,4 +77,48 @@ router.post(
   }
 );
 
+// Add a route for uploading metadata
+router.post(
+  "/upload-metadata",
+  authMiddleware(["TEACHER", "ADMIN"]),
+  async (req: Request, res: Response) => {
+    try {
+      const { metadata } = req.body;
+
+      if (!metadata) {
+        return res.status(400).json({ message: "Metadata is required" });
+      }
+
+      // Convert metadata to string if it's an object
+      const metadataString =
+        typeof metadata === "object" ? JSON.stringify(metadata) : metadata;
+      // Upload metadata to Cloudinary as a JSON file
+      const metadataUpload = await uploadToCloudinary(
+        metadataString,
+        "raw",
+        "metadata",
+        "json"
+      );
+
+      return res.status(200).json({
+        message: "Metadata uploaded successfully",
+        metadataUrl: metadataUpload.secure_url,
+      });
+    } catch (error) {
+      console.error("❌ Error uploading audio metadata:", error);
+      return res
+        .status(500)
+        .json({ message: "Failed to upload audio metadata" });
+    }
+  }
+);
+
+// Make sure to add the FileRequest interface if it doesn't exist elsewhere
+interface FileRequest extends Request {
+  files?: {
+    [fieldname: string]: Express.Multer.File[];
+  };
+}
+
+// Export the router as default export
 export default router;

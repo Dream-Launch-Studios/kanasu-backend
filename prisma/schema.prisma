@@ -94,6 +94,7 @@ model StudentResponse {
   startTime    DateTime
   endTime      DateTime
   audioUrl     String
+  metadataUrl String?
 
   evaluation   Evaluation? @relation(fields: [evaluationId], references: [id])
   question     Question   @relation(fields: [questionId], references: [id])
@@ -117,6 +118,8 @@ model Question {
   imageUrl   String?
   audioUrl   String?
   topicId    String   @db.Uuid
+  answerOptions String[] @default([])  // Array to store up to 4 possible answers
+  correctAnswer Int?    // Index of the correct answer in answerOptions (0-3), null if no correct answer
   topic      Topic    @relation(fields: [topicId], references: [id])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

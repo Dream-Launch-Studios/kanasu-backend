@@ -19,6 +19,7 @@ export const createStudentResponse = async (req: Request, res: Response) => {
       startTime,
       endTime,
       audioUrl,
+      metadataUrl,
     } = req.body;
 
     const response = await prisma.studentResponse.create({
@@ -29,6 +30,7 @@ export const createStudentResponse = async (req: Request, res: Response) => {
         startTime: new Date(startTime),
         endTime: new Date(endTime),
         audioUrl,
+        metadataUrl,
       },
     });
 
@@ -61,6 +63,7 @@ export const batchCreateStudentResponses = async (
           startTime,
           endTime,
           audioUrl,
+          metadataUrl,
         } = response;
         return prisma.studentResponse.create({
           data: {
@@ -70,6 +73,7 @@ export const batchCreateStudentResponses = async (
             startTime: new Date(startTime),
             endTime: new Date(endTime),
             audioUrl,
+            metadataUrl,
           },
         });
       })
@@ -264,6 +268,7 @@ export const submitTeacherBatchResponses = async (
               startTime: new Date(response.startTime || Date.now()),
               endTime: new Date(response.endTime || Date.now()),
               audioUrl: response.audioUrl || "",
+              metadataUrl: response.metadataUrl || null,
             },
           });
         })
@@ -572,7 +577,7 @@ export const submitAudioResponses = async (req: Request, res: Response) => {
       const submission = await tx.studentSubmission.create({
         data: {
           assessmentSessionId: assessmentId,
-          anganwadiId: student.anganwadiId,
+          anganwadiId: student.anganwadiId!,
           studentId: studentId,
           teacherId: teacher.id,
           submissionStatus: "COMPLETED",
@@ -591,6 +596,7 @@ export const submitAudioResponses = async (req: Request, res: Response) => {
               startTime: new Date(response.startTime),
               endTime: new Date(response.endTime),
               audioUrl: response.audioUrl || "",
+              metadataUrl: response.metadataUrl || null,
             },
           });
         })
@@ -601,7 +607,7 @@ export const submitAudioResponses = async (req: Request, res: Response) => {
         where: {
           assessmentSessionId_anganwadiId: {
             assessmentSessionId: assessmentId,
-            anganwadiId: student.anganwadiId,
+            anganwadiId: student.anganwadiId!,
           },
         },
         data: {
@@ -624,6 +630,52 @@ export const submitAudioResponses = async (req: Request, res: Response) => {
   }
 };
 
+// Add endpoint to handle audio metadata upload
+export const uploadAudioMetadata = async (req: Request, res: Response) => {
+  try {
+    const { metadata } = req.body;
+
+    if (!metadata) {
+      return res.status(400).json({ message: "Metadata is required" });
+    }
+
+    // Convert metadata to string if it's an object
+    const metadataString =
+      typeof metadata === "object" ? JSON.stringify(metadata) : metadata;
+
+    // Create a temporary file for the metadata
+    const tempFilePath = `./uploads/metadata_${Date.now()}.json`;
+    fs.writeFileSync(tempFilePath, metadataString);
+
+    try {
+      // Upload the file to Cloudinary
+      const metadataUpload = await uploadToCloudinary(tempFilePath, "raw");
+
+      // Clean up the temp file
+      fs.unlinkSync(tempFilePath);
+
+      return res.status(200).json({
+        message: "Metadata uploaded successfully",
+        metadataUrl: metadataUpload.secure_url,
+      });
+    } catch (cloudinaryError) {
+      console.error("Cloudinary upload error:", cloudinaryError);
+
+      // Clean up temp file if it exists
+      if (fs.existsSync(tempFilePath)) {
+        fs.unlinkSync(tempFilePath);
+      }
+
+      return res
+        .status(500)
+        .json({ message: "Failed to upload to cloud storage" });
+    }
+  } catch (error) {
+    console.error("❌ Error uploading audio metadata:", error);
+    return res.status(500).json({ message: "Failed to upload audio metadata" });
+  }
+};
+
 export const uploadAudioFromMobile = async (
   req: FileRequest,
   res: Response
@@ -643,5 +695,173 @@ export const uploadAudioFromMobile = async (
   } catch (error) {
     console.error("❌ Error uploading audio:", error);
     return res.status(500).json({ message: "Failed to upload audio" });
+  }
+};
+
+// Download all student responses as JSON
+export const downloadAllResponses = async (req: Request, res: Response) => {
+  try {
+    const { filter } = req.query;
+    const filterMode = parseInt(filter as string) || 1; // Default to 1 (all responses)
+
+    // Build where clause based on provided filters
+    const whereClause: any = {};
+
+    // If filter mode is 2, only get responses with no scores
+    if (filterMode === 2) {
+      whereClause.StudentResponseScore = {
+        none: {}, // No StudentResponseScore records
+      };
+    }
+
+    // Fetch the student responses with necessary relations
+    const responses = await prisma.studentResponse.findMany({
+      where: whereClause,
+      include: {
+        student: true,
+        question: true,
+        evaluation: {
+          include: {
+            topic: true,
+            teacher: true,
+          },
+        },
+        StudentResponseScore: true,
+        studentSubmission: true,
+      },
+    });
+
+    // Set headers for JSON download
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=student-responses-${new Date()
+        .toISOString()
+        .slice(0, 10)}.json`
+    );
+
+    // Send the JSON response
+    return res.json(responses);
+  } catch (error) {
+    console.error("❌ Error downloading student responses:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to download student responses" });
+  }
+};
+
+// Process text transcription of student audio response
+export const processTextTranscription = async (req: Request, res: Response) => {
+  try {
+    const { responseId, transcription } = req.body;
+
+    if (!responseId || !transcription) {
+      return res.status(400).json({ 
+        error: "Both responseId and transcription are required" 
+      });
+    }
+
+    // Find the student response with its question
+    const studentResponse = await prisma.studentResponse.findUnique({
+      where: { id: responseId },
+      include: {
+        question: true
+      }
+    });
+
+    if (!studentResponse) {
+      return res.status(404).json({ error: "Student response not found" });
+    }
+
+    // Check if the question has answer options
+    if (!studentResponse.question.answerOptions || 
+        studentResponse.question.answerOptions.length === 0) {
+      return res.status(400).json({ 
+        error: "This question doesn't have any answer options to check against" 
+      });
+    }
+
+    // Normalize the transcription and options (lowercase, trim, remove punctuation)
+    const normalizeText = (text: string): string => {
+      return text
+        .toLowerCase()
+        .trim()
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "") // Remove punctuation
+        .replace(/\s+/g, " ");  // Normalize whitespace
+    };
+    
+    const normalizedTranscription = normalizeText(transcription);
+    const normalizedOptions = studentResponse.question.answerOptions.map(
+      option => normalizeText(option)
+    );
+
+    // Compute similarity scores between transcription and each option
+    const similarityScores = normalizedOptions.map(option => {
+      // Check for direct inclusion (one contains the other)
+      if (normalizedTranscription.includes(option) || option.includes(normalizedTranscription)) {
+        return 0.9; // High similarity but not perfect
+      }
+      
+      // Check for word-level matches
+      const transWords = normalizedTranscription.split(' ');
+      const optionWords = option.split(' ');
+      
+      // Count matching words
+      const matchingWords = transWords.filter(word => 
+        optionWords.some(optWord => word === optWord || 
+          (word.length > 3 && optWord.includes(word)) || 
+          (optWord.length > 3 && word.includes(optWord))
+        )
+      ).length;
+      
+      // Calculate similarity based on matching words relative to total words
+      const maxWords = Math.max(transWords.length, optionWords.length);
+      return maxWords > 0 ? matchingWords / maxWords : 0;
+    });
+    
+    // Find best match (highest similarity score above threshold)
+    const SIMILARITY_THRESHOLD = 0.5; // Adjust as needed
+    const bestMatchIndex = similarityScores.reduce(
+      (bestIdx, score, idx) => score > similarityScores[bestIdx] ? idx : bestIdx, 
+      0
+    );
+    
+    // Only consider it a match if similarity is above threshold
+    const matchedOptionIndex = similarityScores[bestMatchIndex] >= SIMILARITY_THRESHOLD 
+      ? bestMatchIndex 
+      : -1;
+
+    // Determine if it's correct (matches the correct answer)
+    const isCorrect = matchedOptionIndex === studentResponse.question.correctAnswer;
+    
+    // Score: 5 points for correct answer, 0 for incorrect
+    const score = isCorrect ? 5 : 0;
+
+    // Create a score record
+    const responseScore = await prisma.studentResponseScore.create({
+      data: {
+        studentResponseId: responseId,
+        score,
+        gradedAt: new Date(),
+      }
+    });
+
+    return res.status(200).json({
+      message: "Transcription processed successfully",
+      result: {
+        responseId,
+        transcription,
+        matchedOption: matchedOptionIndex !== -1 ? 
+          studentResponse.question.answerOptions[matchedOptionIndex] : null,
+        matchedOptionIndex,
+        similarity: matchedOptionIndex !== -1 ? similarityScores[matchedOptionIndex] : 0,
+        isCorrect,
+        score,
+        scoreId: responseScore.id
+      }
+    });
+  } catch (error) {
+    console.error("❌ Error processing text transcription:", error);
+    return res.status(500).json({ error: "Failed to process transcription" });
   }
 };

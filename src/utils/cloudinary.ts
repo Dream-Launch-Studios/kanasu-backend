@@ -7,9 +7,7 @@ cloudinary.config({
 });
 
 export const uploadToCloudinary = async (
-  filePath: string,
-  type: "audio" | "metadata"
-) => {
+filePath: string, p0: string, p1: { resource_type: string; format: string; }, type: "audio" | "metadata") => {
   return await cloudinary.uploader.upload(filePath, {
     resource_type: type === "audio" ? "video" : "raw",
     folder: `evaluations/${type}`,
