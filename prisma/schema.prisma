@@ -49,7 +49,7 @@ model Student {
   id            String      @id @default(uuid()) @db.Uuid
   name          String?
   cohortId      String?     @db.Uuid
-  gender        String?
+  gender        Gender?     @default(MALE)
   status        String?     @default("ACTIVE")
   anganwadiId   String?     @db.Uuid
   anganwadi     Anganwadi?  @relation(fields: [anganwadiId], references: [id], onDelete: SetNull)
@@ -214,6 +214,13 @@ enum Role {
   REGIONAL_COORDINATOR
   TEACHER
 }
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
 
 model CsvImport {
   id          String   @id @default(uuid()) @db.Uuid

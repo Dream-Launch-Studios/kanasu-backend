@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import prisma from "../config/prisma";
+import { Gender } from "@prisma/client";
 
 // ✅ Create a Student
 export const createStudent = async (
@@ -10,8 +11,16 @@ export const createStudent = async (
   try {
     const { name, gender, status, anganwadiId } = req.body;
 
+    const validGenders = ["MALE", "FEMALE", "OTHER"];
+
     if (!name || !gender || !status) {
-      return res.status(400).json({ error: "Name is required" });
+      return res
+        .status(400)
+        .json({ error: "Name, gender, and status are required" });
+    }
+
+    if (!validGenders.includes(gender)) {
+      return res.status(400).json({ error: "Invalid gender value" });
     }
 
     const student = await prisma.student.create({
@@ -133,9 +142,7 @@ export const searchAndAddStudentToAnganwadiByName = async (
     const { name, anganwadiName } = req.body;
 
     if (!name) {
-      return res
-        .status(400)
-        .json({ error: "Name is required to search" });
+      return res.status(400).json({ error: "Name is required to search" });
     }
 
     if (!anganwadiName) {
@@ -152,7 +159,7 @@ export const searchAndAddStudentToAnganwadiByName = async (
 
     const student = await prisma.student.findFirst({
       where: {
-        name: { contains: name, mode: "insensitive" }
+        name: { contains: name, mode: "insensitive" },
       },
     });
 
@@ -183,12 +190,16 @@ export const searchStudents = async (
   try {
     const search = req.query.search as string;
 
+    const validGenders = ["MALE", "FEMALE", "OTHER"];
+
     const students = await prisma.student.findMany({
       where: search
         ? {
             OR: [
               { name: { contains: search, mode: "insensitive" } },
-              { gender: { contains: search, mode: "insensitive" } },
+              ...(validGenders.includes(search)
+                ? [{ gender: { equals: search as Gender } }]
+                : []),
             ],
           }
         : {},
@@ -218,35 +229,44 @@ export const getStudentEvaluations = async (
         studentResponses: {
           include: {
             StudentResponseScore: true,
-            question: true
-          }
-        }
+            question: true,
+          },
+        },
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: "desc" },
     });
 
     // Calculate performance metrics
-    const evaluationStats = evaluations.map(evaluation => {
+    const evaluationStats = evaluations.map((evaluation) => {
       let totalScore = 0;
       let maxPossibleScore = 0;
       let scoredResponses = 0;
 
-      evaluation.studentResponses.forEach(response => {
-        if (response.StudentResponseScore && response.StudentResponseScore.length > 0) {
+      evaluation.studentResponses.forEach((response) => {
+        if (
+          response.StudentResponseScore &&
+          response.StudentResponseScore.length > 0
+        ) {
           // Use the most recent score if multiple exist
-          const latestScore = response.StudentResponseScore.reduce((latest, current) => {
-            return new Date(current.gradedAt) > new Date(latest.gradedAt) ? current : latest;
-          }, response.StudentResponseScore[0]);
-          
+          const latestScore = response.StudentResponseScore.reduce(
+            (latest, current) => {
+              return new Date(current.gradedAt) > new Date(latest.gradedAt)
+                ? current
+                : latest;
+            },
+            response.StudentResponseScore[0]
+          );
+
           totalScore += latestScore.score;
           maxPossibleScore += 5; // Assuming max score is 5
           scoredResponses++;
         }
       });
 
-      const percentComplete = evaluation.studentResponses.length > 0 
-        ? (scoredResponses / evaluation.studentResponses.length) * 100 
-        : 0;
+      const percentComplete =
+        evaluation.studentResponses.length > 0
+          ? (scoredResponses / evaluation.studentResponses.length) * 100
+          : 0;
 
       return {
         ...evaluation,
@@ -255,8 +275,8 @@ export const getStudentEvaluations = async (
           averageScore: scoredResponses > 0 ? totalScore / scoredResponses : 0,
           percentComplete,
           responsesGraded: scoredResponses,
-          totalResponses: evaluation.studentResponses.length
-        }
+          totalResponses: evaluation.studentResponses.length,
+        },
       };
     });
 
@@ -285,12 +305,12 @@ export const getStudentPerformanceSummary = async (
             topic: true,
             studentResponses: {
               include: {
-                StudentResponseScore: true
-              }
-            }
-          }
-        }
-      }
+                StudentResponseScore: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!student) {
@@ -302,7 +322,7 @@ export const getStudentPerformanceSummary = async (
     let totalResponses = 0;
     let totalScoredResponses = 0;
     let totalScoreSum = 0;
-    
+
     // Calculate topic-wise performance
     interface TopicPerformance {
       topicName: string;
@@ -313,10 +333,10 @@ export const getStudentPerformanceSummary = async (
       averageScore?: number;
       completionRate?: number;
     }
-    
+
     const topicPerformance: Record<string, TopicPerformance> = {};
-    
-    student.evaluations.forEach(evaluation => {
+
+    student.evaluations.forEach((evaluation) => {
       // Add topic to tracking if not already there
       if (!topicPerformance[evaluation.topicId]) {
         topicPerformance[evaluation.topicId] = {
@@ -324,61 +344,77 @@ export const getStudentPerformanceSummary = async (
           evaluationCount: 0,
           totalScore: 0,
           totalResponses: 0,
-          scoredResponses: 0
+          scoredResponses: 0,
         };
       }
-      
+
       topicPerformance[evaluation.topicId].evaluationCount++;
-      
+
       // Process responses and scores
-      evaluation.studentResponses.forEach(response => {
+      evaluation.studentResponses.forEach((response) => {
         totalResponses++;
         topicPerformance[evaluation.topicId].totalResponses++;
-        
-        if (response.StudentResponseScore && response.StudentResponseScore.length > 0) {
+
+        if (
+          response.StudentResponseScore &&
+          response.StudentResponseScore.length > 0
+        ) {
           // Get the highest/latest score
-          const latestScore = response.StudentResponseScore.reduce((latest, current) => {
-            return new Date(current.gradedAt) > new Date(latest.gradedAt) ? current : latest;
-          }, response.StudentResponseScore[0]);
-          
+          const latestScore = response.StudentResponseScore.reduce(
+            (latest, current) => {
+              return new Date(current.gradedAt) > new Date(latest.gradedAt)
+                ? current
+                : latest;
+            },
+            response.StudentResponseScore[0]
+          );
+
           totalScoredResponses++;
           totalScoreSum += latestScore.score;
-          
+
           topicPerformance[evaluation.topicId].scoredResponses++;
           topicPerformance[evaluation.topicId].totalScore += latestScore.score;
         }
       });
     });
-    
+
     // Calculate averages for topics
-    Object.keys(topicPerformance).forEach(topicId => {
+    Object.keys(topicPerformance).forEach((topicId) => {
       const topic = topicPerformance[topicId];
-      topic.averageScore = topic.scoredResponses > 0 
-        ? topic.totalScore / topic.scoredResponses 
-        : 0;
-      topic.completionRate = topic.totalResponses > 0 
-        ? (topic.scoredResponses / topic.totalResponses) * 100 
-        : 0;
+      topic.averageScore =
+        topic.scoredResponses > 0
+          ? topic.totalScore / topic.scoredResponses
+          : 0;
+      topic.completionRate =
+        topic.totalResponses > 0
+          ? (topic.scoredResponses / topic.totalResponses) * 100
+          : 0;
     });
-    
+
     // Format the performance summary
     const performanceSummary = {
       student: {
         id: student.id,
         name: student.name,
-        anganwadi: student.anganwadi ? student.anganwadi.name : null
+        anganwadi: student.anganwadi ? student.anganwadi.name : null,
       },
       overallStats: {
         totalEvaluations,
-        completedEvaluations: student.evaluations.filter(e => e.status === "GRADED").length,
-        averageScore: totalScoredResponses > 0 ? totalScoreSum / totalScoredResponses : 0,
+        completedEvaluations: student.evaluations.filter(
+          (e) => e.status === "GRADED"
+        ).length,
+        averageScore:
+          totalScoredResponses > 0 ? totalScoreSum / totalScoredResponses : 0,
         totalResponses,
         gradedResponses: totalScoredResponses,
-        completionRate: totalResponses > 0 ? (totalScoredResponses / totalResponses) * 100 : 0
+        completionRate:
+          totalResponses > 0
+            ? (totalScoredResponses / totalResponses) * 100
+            : 0,
       },
-      topicPerformance: Object.values(topicPerformance)
+      topicPerformance: Object.values(topicPerformance),
     };
-    
+
     return res.status(200).json(performanceSummary);
   } catch (error) {
     next(error);
@@ -393,37 +429,37 @@ export const getStudentsForAssessment = async (
 ) => {
   try {
     const { anganwadiId, sessionId } = req.query;
-    
+
     // Build the query based on provided filters
     const whereClause: any = { status: "ACTIVE" };
-    
+
     if (anganwadiId) {
       whereClause.anganwadiId = anganwadiId as string;
     }
-    
+
     // Get all active students matching the criteria
     const students = await prisma.student.findMany({
       where: whereClause,
-      include: { 
+      include: {
         anganwadi: true,
-        evaluations: sessionId ? {
-          where: {
-            AssessmentSession: {
-              some: { id: sessionId as string }
+        evaluations: sessionId
+          ? {
+              where: {
+                AssessmentSession: {
+                  some: { id: sessionId as string },
+                },
+              },
             }
-          }
-        } : true
-      }
+          : true,
+      },
     });
-    
+
     // If sessionId is provided, mark students who have already been assessed
-    const studentsWithAssessmentStatus = students.map(student => ({
+    const studentsWithAssessmentStatus = students.map((student) => ({
       ...student,
-      alreadyAssessed: sessionId 
-        ? student.evaluations.length > 0
-        : false
+      alreadyAssessed: sessionId ? student.evaluations.length > 0 : false,
     }));
-    
+
     return res.status(200).json(studentsWithAssessmentStatus);
   } catch (error) {
     next(error);
