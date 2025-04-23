@@ -9,7 +9,7 @@ interface CreateAnganwadiRequest {
   district: string;
   teacher: {
     name: string;
-    phone: string;
+    phone: number;
   };
   studentIds?: string[];
 }
@@ -79,11 +79,12 @@ export const createAnganwadi = async (
             phone: teacher.phone,
           },
         },
-        students: validStudents.length > 0
-          ? {
-              connect: validStudents,
-            }
-          : undefined,
+        students:
+          validStudents.length > 0
+            ? {
+                connect: validStudents,
+              }
+            : undefined,
       },
       include: { teacher: true, students: true },
     });
@@ -225,11 +226,7 @@ export const deleteAnganwadi = async (
 
 // ✅ Assign only students (not teachers anymore)
 export const assignToAnganwadi = async (
-  req: Request<
-    {},
-    {},
-    { anganwadiId: string; studentId: string }
-  >,
+  req: Request<{}, {}, { anganwadiId: string; studentId: string }>,
   res: Response,
   next: NextFunction
 ) => {
