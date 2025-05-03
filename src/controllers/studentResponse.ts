@@ -233,6 +233,22 @@ export const submitTeacherBatchResponses = async (
       });
     }
 
+    // Check if student has already submitted for this assessment
+    if (assessmentSessionId) {
+      const existingSubmission = await prisma.studentSubmission.findFirst({
+        where: {
+          assessmentSessionId: assessmentSessionId,
+          studentId: studentId,
+        },
+      });
+
+      if (existingSubmission) {
+        return res.status(400).json({
+          error: "Student has already submitted responses for this assessment",
+        });
+      }
+    }
+
     // Start a transaction to ensure all operations succeed together
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create the evaluation record first
@@ -535,6 +551,20 @@ export const submitAudioResponses = async (req: Request, res: Response) => {
 
     if (!assessmentSession) {
       return res.status(404).json({ error: "Assessment not found" });
+    }
+
+    // Check if student has already submitted for this assessment
+    const existingSubmission = await prisma.studentSubmission.findFirst({
+      where: {
+        assessmentSessionId: assessmentId,
+        studentId: studentId,
+      },
+    });
+
+    if (existingSubmission) {
+      return res.status(400).json({
+        error: "Student has already submitted responses for this assessment",
+      });
     }
 
     // Get student data

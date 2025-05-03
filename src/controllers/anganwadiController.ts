@@ -9,9 +9,11 @@ interface CreateAnganwadiRequest {
   district: string;
   teacher: {
     name: string;
-    phone: number;
+    phone: string;
   };
   studentIds?: string[];
+  // Optional array of new students for update
+  students?: { name: string; gender: string }[];
 }
 
 export const createAnganwadi = async (
@@ -158,7 +160,7 @@ export const updateAnganwadi = async (
 ) => {
   try {
     const { id } = req.params;
-    const { name, location, district, studentIds } = req.body;
+    const { name, location, district, studentIds, students: newStudents } = req.body;
 
     const existingAnganwadi = await prisma.anganwadi.findUnique({
       where: { id },
@@ -168,37 +170,52 @@ export const updateAnganwadi = async (
       return res.status(404).json({ error: "Anganwadi not found" });
     }
 
-    let studentConnections = undefined;
+    // Prepare existing student connections
+    let validStudentConnections: { id: string }[] = [];
     if (studentIds && studentIds.length > 0) {
       const existingStudents = await prisma.student.findMany({
         where: { id: { in: studentIds } },
         select: { id: true },
       });
-
-      const validStudents = existingStudents.map((s) => ({ id: s.id }));
+      validStudentConnections = existingStudents.map((s) => ({ id: s.id }));
       const invalidStudentIds = studentIds.filter(
-        (id) => !validStudents.some((s) => s.id === id)
+        (id) => !validStudentConnections.some((s) => s.id === id)
       );
-
       if (invalidStudentIds.length > 0) {
         return res.status(400).json({
           error: "Some students do not exist",
           invalidStudentIds,
         });
       }
-
-      studentConnections = {
-        set: validStudents,
-      };
+    }
+    // Prepare new student creations
+    let createNewStudents: { name: string; gender: string }[] = [];
+    if (newStudents && newStudents.length > 0) {
+      createNewStudents = newStudents.map((s) => ({
+        name: s.name,
+        gender: s.gender,
+      } as { name: string; gender: string }));
+    }
+    // Build student update operations
+    const studentUpdateOperations: any = {};
+    if (validStudentConnections.length > 0) {
+      studentUpdateOperations.connect = validStudentConnections;
+    }
+    if (createNewStudents.length > 0) {
+      studentUpdateOperations.create = createNewStudents;
     }
 
+    // Update anganwadi with optional name/location/district and student operations
     const anganwadi = await prisma.anganwadi.update({
       where: { id },
       data: {
         name,
         location,
         district,
-        students: studentConnections,
+        // Only include student operations if any
+        ...(Object.keys(studentUpdateOperations).length > 0
+          ? { students: studentUpdateOperations }
+          : {}),
       },
       include: { teacher: true, students: true },
     });

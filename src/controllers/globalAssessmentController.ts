@@ -57,7 +57,7 @@ export const createGlobalAssessment = async (req: Request, res: Response) => {
       endDate,
       isActive,
       topicIds,
-      anganwadiIds, // Array of anganwadi IDs to include
+      anganwadiIds,
     } = req.body;
 
     // Validate required fields
@@ -76,53 +76,84 @@ export const createGlobalAssessment = async (req: Request, res: Response) => {
       });
     }
 
-    // Create the assessment session
-    const assessmentSession = await prisma.assessmentSession.create({
-      data: {
-        name,
-        description,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        isActive: isActive !== undefined ? isActive : true,
-        status: "DRAFT",
-        topicIds,
-      },
+    // Use a transaction to ensure data consistency
+    const result = await prisma.$transaction(async (tx) => {
+      // Create the assessment session
+      const assessmentSession = await tx.assessmentSession.create({
+        data: {
+          name,
+          description,
+          startDate: new Date(startDate),
+          endDate: new Date(endDate),
+          isActive: isActive !== undefined ? isActive : true,
+          status: "DRAFT",
+          topicIds,
+        },
+      });
+
+      // Get student counts for each anganwadi
+      const anganwadiStudentCounts = await Promise.all(
+        anganwadiIds.map(async (anganwadiId) => {
+          // Get all ACTIVE students in the anganwadi
+          const students = await tx.student.findMany({
+            where: {
+              anganwadiId,
+              status: "ACTIVE",
+            },
+            select: {
+              id: true,
+            },
+          });
+
+          return {
+            anganwadiId,
+            count: students.length,
+            studentIds: students.map((s) => s.id),
+          };
+        })
+      );
+
+      // Create anganwadi assessment entries
+      const anganwadiAssessments = await Promise.all(
+        anganwadiStudentCounts.map(({ anganwadiId, count }) => {
+          return tx.anganwadiAssessment.create({
+            data: {
+              assessmentSessionId: assessmentSession.id,
+              anganwadiId,
+              totalStudentCount: count,
+              completedStudentCount: 0,
+              // An anganwadi is complete if it has no students to assess
+              // or if all its students have completed their assessments
+              isComplete: count === 0,
+            },
+            include: {
+              anganwadi: true,
+            },
+          });
+        })
+      );
+
+      return {
+        assessmentSession,
+        anganwadiAssessments,
+        stats: {
+          totalAnganwadis: anganwadiAssessments.length,
+          completedAnganwadis: anganwadiAssessments.filter((a) => a.isComplete)
+            .length,
+          totalStudents: anganwadiAssessments.reduce(
+            (sum, a) => sum + a.totalStudentCount,
+            0
+          ),
+          completedStudents: 0,
+        },
+      };
     });
-
-    // Get student counts for each anganwadi
-    const anganwadiStudentCounts = await Promise.all(
-      anganwadiIds.map(async (anganwadiId) => {
-        const count = await prisma.student.count({
-          where: {
-            anganwadiId,
-            status: "ACTIVE",
-          },
-        });
-        return { anganwadiId, count };
-      })
-    );
-
-    // Create anganwadi assessment entries
-    const anganwadiAssessments = await Promise.all(
-      anganwadiStudentCounts.map(({ anganwadiId, count }) => {
-        return prisma.anganwadiAssessment.create({
-          data: {
-            assessmentSessionId: assessmentSession.id,
-            anganwadiId,
-            totalStudentCount: count,
-            completedStudentCount: 0,
-            isComplete: false,
-          },
-        });
-      })
-    );
-
-    // No longer creating student submission records here - will only be created when teachers submit
 
     res.status(201).json({
       message: "Global assessment created successfully",
-      assessmentSession,
-      anganwadiAssessments,
+      assessmentSession: result.assessmentSession,
+      anganwadiAssessments: result.anganwadiAssessments,
+      stats: result.stats,
     });
   } catch (error) {
     console.error("[Create Global Assessment Error]", error);
@@ -366,122 +397,141 @@ export const recordStudentSubmission = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if the assessment exists
-    const assessment = await prisma.assessmentSession.findUnique({
-      where: { id: assessmentId },
-    });
-
-    if (!assessment) {
-      return res.status(404).json({ error: "Assessment not found" });
-    }
-
-    // Check if the anganwadi is part of this assessment
-    const anganwadiAssessment = await prisma.anganwadiAssessment.findUnique({
-      where: {
-        assessmentSessionId_anganwadiId: {
-          assessmentSessionId: assessmentId,
-          anganwadiId,
+    // Use a transaction to ensure data consistency
+    const result = await prisma.$transaction(async (tx) => {
+      // Check if the assessment exists and is active
+      const assessment = await tx.assessmentSession.findUnique({
+        where: {
+          id: assessmentId,
+          isActive: true,
         },
-      },
-    });
-
-    if (!anganwadiAssessment) {
-      return res
-        .status(404)
-        .json({ error: "This anganwadi is not part of this assessment" });
-    }
-
-    // Verify that the student belongs to this anganwadi
-    const student = await prisma.student.findUnique({
-      where: { id: studentId },
-    });
-
-    if (!student || student.anganwadiId !== anganwadiId) {
-      return res.status(400).json({
-        error: "Student does not belong to the specified anganwadi",
       });
-    }
 
-    // Check for existing submission
-    const existingSubmission = await prisma.studentSubmission.findFirst({
-      where: {
-        assessmentSessionId: assessmentId,
-        studentId,
-      },
-    });
+      if (!assessment) {
+        throw new Error("Assessment not found or is not active");
+      }
 
-    if (existingSubmission) {
-      return res.status(400).json({
-        error: "Student has already submitted for this assessment",
-      });
-    }
-
-    // Create a new student submission record
-    const studentSubmission = await prisma.studentSubmission.create({
-      data: {
-        assessmentSessionId: assessmentId,
-        anganwadiId,
-        studentId,
-        teacherId,
-        // These now default to COMPLETED and current timestamp
-        responses: {
-          createMany: {
-            data: responses.map((response: any) => ({
-              questionId: response.questionId,
-              studentId,
-              startTime: new Date(response.startTime),
-              endTime: new Date(response.endTime),
-              audioUrl: response.audioUrl,
-              evaluationId: response.evaluationId, // Can be null for direct submissions
-            })),
+      // Check if the anganwadi is part of this assessment
+      const anganwadiAssessment = await tx.anganwadiAssessment.findUnique({
+        where: {
+          assessmentSessionId_anganwadiId: {
+            assessmentSessionId: assessmentId,
+            anganwadiId,
           },
         },
-      },
-    });
-
-    // Update anganwadi completion count
-    await prisma.anganwadiAssessment.update({
-      where: {
-        id: anganwadiAssessment.id,
-      },
-      data: {
-        completedStudentCount: {
-          increment: 1,
-        },
-      },
-    });
-
-    // Check if all students in this anganwadi have completed
-    const updatedAnganwadiAssessment =
-      await prisma.anganwadiAssessment.findUnique({
-        where: {
-          id: anganwadiAssessment.id,
+        include: {
+          anganwadi: {
+            include: {
+              students: {
+                where: {
+                  status: "ACTIVE",
+                },
+                select: {
+                  id: true,
+                },
+              },
+            },
+          },
         },
       });
 
-    // Mark anganwadi as complete if all students have submitted
-    if (
-      updatedAnganwadiAssessment &&
-      updatedAnganwadiAssessment.completedStudentCount >=
-        updatedAnganwadiAssessment.totalStudentCount
-    ) {
-      await prisma.anganwadiAssessment.update({
+      if (!anganwadiAssessment) {
+        throw new Error("This anganwadi is not part of this assessment");
+      }
+
+      // Verify that the student belongs to this anganwadi and is active
+      const student = await tx.student.findUnique({
+        where: {
+          id: studentId,
+          status: "ACTIVE",
+        },
+      });
+
+      if (!student || student.anganwadiId !== anganwadiId) {
+        throw new Error(
+          "Student does not belong to the specified anganwadi or is not active"
+        );
+      }
+
+      // Check for existing submission
+      const existingSubmission = await tx.studentSubmission.findFirst({
+        where: {
+          assessmentSessionId: assessmentId,
+          studentId,
+        },
+      });
+
+      if (existingSubmission) {
+        throw new Error("Student has already submitted for this assessment");
+      }
+
+      // Create a new student submission record
+      const studentSubmission = await tx.studentSubmission.create({
+        data: {
+          assessmentSessionId: assessmentId,
+          anganwadiId,
+          studentId,
+          teacherId,
+          submissionStatus: "COMPLETED",
+          submittedAt: new Date(),
+          responses: {
+            createMany: {
+              data: responses.map((response: any) => ({
+                questionId: response.questionId,
+                studentId,
+                startTime: new Date(response.startTime),
+                endTime: new Date(response.endTime),
+                audioUrl: response.audioUrl,
+                evaluationId: response.evaluationId,
+              })),
+            },
+          },
+        },
+      });
+
+      // Get the current count of completed submissions for this anganwadi
+      const completedSubmissions = await tx.studentSubmission.count({
+        where: {
+          assessmentSessionId: assessmentId,
+          anganwadiId,
+          submissionStatus: "COMPLETED",
+        },
+      });
+
+      // Update anganwadi completion status
+      const updatedAssessment = await tx.anganwadiAssessment.update({
         where: {
           id: anganwadiAssessment.id,
         },
         data: {
-          isComplete: true,
+          completedStudentCount: completedSubmissions,
+          isComplete:
+            completedSubmissions >= anganwadiAssessment.totalStudentCount,
         },
       });
-    }
+
+      return {
+        studentSubmission,
+        updatedAssessment,
+        stats: {
+          totalStudents: anganwadiAssessment.totalStudentCount,
+          completedStudents: completedSubmissions,
+          isComplete:
+            completedSubmissions >= anganwadiAssessment.totalStudentCount,
+        },
+      };
+    });
 
     res.status(200).json({
       message: "Student submission recorded successfully",
-      submission: studentSubmission,
+      submission: result.studentSubmission,
+      stats: result.stats,
     });
   } catch (error) {
     console.error("[Record Student Submission Error]", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Internal server error",
+    });
   }
 };
 
@@ -532,6 +582,9 @@ export const completeGlobalAssessment = async (req: Request, res: Response) => {
 
     const assessment = await prisma.assessmentSession.findUnique({
       where: { id },
+      include: {
+        anganwadiAssessments: true,
+      },
     });
 
     if (!assessment) {
@@ -544,17 +597,98 @@ export const completeGlobalAssessment = async (req: Request, res: Response) => {
         .json({ error: "Only published assessments can be completed" });
     }
 
-    const updatedAssessment = await prisma.assessmentSession.update({
+    // Update all anganwadi assessments to complete
+    await prisma.$transaction(async (tx) => {
+      // First update each anganwadi assessment to complete
+      for (const anganwadiAssessment of assessment.anganwadiAssessments) {
+        await tx.anganwadiAssessment.update({
+          where: { id: anganwadiAssessment.id },
+          data: {
+            isComplete: true,
+            completedStudentCount: anganwadiAssessment.totalStudentCount,
+          },
+        });
+      }
+
+      // Then update the assessment session
+      await tx.assessmentSession.update({
+        where: { id },
+        data: {
+          status: "COMPLETED",
+          isActive: false,
+        },
+      });
+    });
+
+    // Fetch the updated assessment with stats
+    const updatedAssessment = await prisma.assessmentSession.findUnique({
       where: { id },
-      data: {
-        status: "COMPLETED",
-        isActive: false,
+      include: {
+        anganwadiAssessments: {
+          include: {
+            anganwadi: true,
+            studentSubmissions: {
+              include: {
+                responses: {
+                  include: {
+                    StudentResponseScore: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
+    // Calculate updated stats
+    const totalAnganwadis = updatedAssessment!.anganwadiAssessments.length;
+    const completedAnganwadis = updatedAssessment!.anganwadiAssessments.filter(
+      (a) => a.isComplete
+    ).length;
+
+    const totalStudents = updatedAssessment!.anganwadiAssessments.reduce(
+      (sum, a) => sum + a.totalStudentCount,
+      0
+    );
+    const completedStudents = updatedAssessment!.anganwadiAssessments.reduce(
+      (sum, a) => sum + a.completedStudentCount,
+      0
+    );
+
+    const gradedStudents = updatedAssessment!.anganwadiAssessments.reduce(
+      (sum, anganwadi) => {
+        const gradedSubmissions = anganwadi.studentSubmissions.filter(
+          (submission) =>
+            submission.responses.every(
+              (response) =>
+                response.StudentResponseScore &&
+                response.StudentResponseScore.length > 0
+            )
+        );
+        return sum + gradedSubmissions.length;
+      },
+      0
+    );
+
     res.status(200).json({
       message: "Assessment marked as completed",
-      assessment: updatedAssessment,
+      assessment: {
+        ...updatedAssessment,
+        stats: {
+          totalAnganwadis,
+          completedAnganwadis,
+          anganwadiCompletionPercentage: Math.round(
+            (completedAnganwadis / totalAnganwadis) * 100
+          ),
+          totalStudents,
+          completedStudents,
+          studentCompletionPercentage: Math.round(
+            (completedStudents / totalStudents) * 100
+          ),
+          gradedStudents,
+        },
+      },
     });
   } catch (error) {
     console.error("[Complete Assessment Error]", error);
