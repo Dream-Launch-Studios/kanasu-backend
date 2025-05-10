@@ -1,42 +1,54 @@
-import { PublishCommand } from "@aws-sdk/client-sns";
-import { snsClient } from "../config/aws";
+import axios from 'axios';
+
+// MSG91 Configuration
+const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY;
+const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID;
+const MSG91_SENDER_ID = process.env.MSG91_SENDER_ID;
+
+if (!MSG91_AUTH_KEY) {
+  console.warn('MSG91_AUTH_KEY is not set in environment variables');
+}
 
 /**
- * Sends an SMS message using AWS SNS
- * @param phoneNumber - The phone number to send the SMS to (with country code)
- * @param message - The message content
- * @returns Promise resolving to the message ID if sent successfully
+ * Send SMS using MSG91 API
+ * @param phoneNumber - The recipient's phone number (with country code)
+ * @param message - The message to send
  */
-export const sendSMS = async (phoneNumber: string, message: string): Promise<string> => {
+const sendSMS = async (phoneNumber: string, message: string): Promise<void> => {
   try {
-    // Make sure the phone number has the correct format (+919876543210)
-    // If it doesn't start with +, add it
-    const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+    // If MSG91 is not configured, log the message and return
+    if (!MSG91_AUTH_KEY) {
+      console.log(`[SMS] Would send to ${phoneNumber}: ${message}`);
+      return;
+    }
 
-    // Configure the SMS parameters
-    const params = {
-      Message: message,
-      PhoneNumber: formattedPhone,
-      MessageAttributes: {
-        'AWS.SNS.SMS.SenderID': {
-          DataType: 'String',
-          StringValue: 'KANASU'  // Custom sender ID, must be pre-registered with AWS
-        },
-        'AWS.SNS.SMS.SMSType': {
-          DataType: 'String',
-          StringValue: 'Transactional'  // Transactional messages have higher delivery priority
-        }
-      }
+    // Format phone number (ensure it has country code)
+    const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber;
+
+    // Prepare the request payload
+    const payload = {
+      authkey: MSG91_AUTH_KEY,
+      mobiles: formattedPhone,
+      message: message,
+      sender: MSG91_SENDER_ID || 'KANASU',
+      route: 4, // Transactional route
+      template_id: MSG91_TEMPLATE_ID,
     };
 
-    // Send the SMS
-    const command = new PublishCommand(params);
-    const response = await snsClient.send(command);
+    // Make the API request to MSG91
+    const response = await axios.post('https://api.msg91.com/api/sendhttp.php', null, {
+      params: payload,
+    });
 
-    console.log(`SMS sent successfully to ${phoneNumber}, MessageId: ${response.MessageId}`);
-    return response.MessageId || "";
+    if (response.status !== 200) {
+      throw new Error(`MSG91 API returned status ${response.status}`);
+    }
+
+    console.log(`SMS sent successfully to ${phoneNumber}`);
   } catch (error) {
-    console.error("Error sending SMS:", error);
-    throw error;
+    console.error('Error sending SMS:', error);
+    throw new Error('Failed to send SMS');
   }
-}; 
+};
+
+export { sendSMS }; 

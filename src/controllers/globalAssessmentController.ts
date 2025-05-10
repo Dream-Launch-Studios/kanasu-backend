@@ -58,6 +58,7 @@ export const createGlobalAssessment = async (req: Request, res: Response) => {
       isActive,
       topicIds,
       anganwadiIds,
+      cohortIds,
     } = req.body;
 
     // Validate required fields
@@ -67,12 +68,12 @@ export const createGlobalAssessment = async (req: Request, res: Response) => {
       !endDate ||
       !topicIds ||
       !Array.isArray(topicIds) ||
-      !anganwadiIds ||
-      !Array.isArray(anganwadiIds)
+      (!anganwadiIds || !Array.isArray(anganwadiIds)) &&
+      (!cohortIds || !Array.isArray(cohortIds))
     ) {
       return res.status(400).json({
         error:
-          "Name, start date, end date, topic IDs, and anganwadi IDs are required",
+          "Name, start date, end date, topic IDs, and either anganwadi IDs or cohort IDs are required",
       });
     }
 
@@ -91,9 +92,39 @@ export const createGlobalAssessment = async (req: Request, res: Response) => {
         },
       });
 
+      // Collect all anganwadi IDs (both directly selected and from cohorts)
+      let allAnganwadiIds: string[] = [...(anganwadiIds || [])];
+      
+      // If cohort IDs are provided, fetch all anganwadis associated with teachers in those cohorts
+      if (cohortIds && cohortIds.length > 0) {
+        // Get all teachers in the selected cohorts
+        const teachersInCohorts = await tx.teacher.findMany({
+          where: {
+            cohortId: {
+              in: cohortIds,
+            },
+          },
+          select: {
+            anganwadiId: true,
+          },
+        });
+        
+        // Filter out null anganwadiIds and add to the allAnganwadiIds list
+        const cohortAnganwadiIds = teachersInCohorts
+          .filter(teacher => teacher.anganwadiId !== null)
+          .map(teacher => teacher.anganwadiId as string);
+          
+        allAnganwadiIds = [...new Set([...allAnganwadiIds, ...cohortAnganwadiIds])];
+      }
+
+      // Ensure we have at least one anganwadi
+      if (allAnganwadiIds.length === 0) {
+        throw new Error("No anganwadis found. Please select at least one anganwadi or cohort with anganwadis.");
+      }
+
       // Get student counts for each anganwadi
       const anganwadiStudentCounts = await Promise.all(
-        anganwadiIds.map(async (anganwadiId) => {
+        allAnganwadiIds.map(async (anganwadiId) => {
           // Get all ACTIVE students in the anganwadi
           const students = await tx.student.findMany({
             where: {
@@ -157,7 +188,11 @@ export const createGlobalAssessment = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("[Create Global Assessment Error]", error);
-    res.status(500).json({ error: "Internal server error" });
+    if (error instanceof Error) {
+      res.status(400).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
 };
 
