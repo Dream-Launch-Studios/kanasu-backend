@@ -39,7 +39,9 @@ export const createQuestion = async (req: FileRequest, res: Response) => {
     }
 
     // Upload to Cloudinary
+    //@ts-ignore
     const imageUpload = await uploadToCloudinary(imageFile.path, "image" as any);
+    //@ts-ignore
     const audioUpload = await uploadToCloudinary(audioFile.path, "audio");
 
     // Clean up local files

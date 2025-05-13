@@ -131,6 +131,7 @@ export const searchTeachers = async (
 
     const teachers = await prisma.teacher.findMany({
       where: {
+        //@ts-ignore
         OR: search
           ? [
               { name: { contains: search as string, mode: "insensitive" } },

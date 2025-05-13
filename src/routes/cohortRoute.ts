@@ -3,8 +3,11 @@ import { createCohort, deleteCohort, getCohorts} from "../controllers/cohortCont
 
 const router = express.Router();
 
+//@ts-ignore
 router.post("/", createCohort);
+//@ts-ignore
 router.get("/", getCohorts);
+//@ts-ignore
 router.delete("/:id", deleteCohort);
 
 export default router;

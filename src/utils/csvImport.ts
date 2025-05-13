@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse';
 import prisma from '../config/prisma';
+import type { Gender } from '@prisma/client';
 
 interface StudentCsvRow {
   name: string;
@@ -85,7 +86,7 @@ export const processStudentCsv = async (
         await prisma.student.create({
           data: {
             name: studentData.name,
-            gender: studentData.gender,
+            gender: studentData.gender as Gender,
             status: studentData.status,
             anganwadiId
           }
