@@ -24,5 +24,15 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
+<<<<<<< HEAD
   "include": ["src/**/*"]
+=======
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+>>>>>>> 1169a05526f8bcc90c7e37b74caad4757b803544
 }

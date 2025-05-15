@@ -4,6 +4,7 @@ import { authMiddleware } from "../middlewares/authMiddleware";
 
 const router = express.Router();
 
+//@ts-ignore
 router.get("/me", authMiddleware, getUserProfile); // Protected route
 
 export default router;

@@ -7,6 +7,7 @@ async function testDBConnection() {
     await prisma.$connect();
     console.log("✅ Database connection successful!");
   } catch (err) {
+    //@ts-ignore
     console.error("❌ Failed to connect to the database:", err.message);
   }
 }

@@ -9,8 +9,11 @@ import {
 
 const router = express.Router();
 
+//@ts-ignore
 router.post("/", createCohort);
+//@ts-ignore
 router.get("/", getCohorts);
+//@ts-ignore
 router.delete("/:id", deleteCohort);
 
 // Teacher ranking routes
