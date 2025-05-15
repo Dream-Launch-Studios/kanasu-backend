@@ -25,6 +25,7 @@ model Teacher {
   anganwadi     Anganwadi? @relation(fields: [anganwadiId], references: [id])
   anganwadiId   String? @unique @db.Uuid 
   isVerified    Boolean  @default(false)
+  rank          Int      @default(0)
 
   cohort        Cohort?  @relation(fields: [cohortId], references: [id], onDelete: SetNull) 
   evaluations   Evaluation[]

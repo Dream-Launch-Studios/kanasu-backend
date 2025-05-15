@@ -15,6 +15,7 @@ import {
   uploadAudioMetadata,
   downloadAllResponses,
   processTextTranscription,
+  countResponsesByAnganwadi,
 } from "../controllers/studentResponse";
 
 const router = express.Router();
@@ -29,6 +30,7 @@ router.get("/evaluation/:evaluationId", getResponsesByEvaluation);
 router.get("/scored", getScoredResponses);
 router.get("/export", exportResponses);
 router.get("/download-all", downloadAllResponses);
+router.get("/anganwadi/:anganwadiId/count", countResponsesByAnganwadi);
 router.get("/:id", getResponseById);
 router.post("/:responseId/score", scoreStudentResponse);
 router.post("/batch-score", batchScoreResponses);

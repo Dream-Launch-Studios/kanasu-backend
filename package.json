@@ -5,11 +5,11 @@
   "private": true,
   "scripts": {
     "dev": "nodemon",
-    "build": "bun run build",
+    "build": "tsc -b && npm run build",
     "start": "bun run start"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^3.0.0",
+    "@types/bcryptjs": "^2.4.6",
     "@types/bun": "latest",
     "@types/express": "^5.0.1",
     "@types/jsonwebtoken": "^9.0.9",

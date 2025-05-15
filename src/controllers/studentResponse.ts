@@ -895,3 +895,49 @@ export const processTextTranscription = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Failed to process transcription" });
   }
 };
+
+// ✅ Count student responses for an anganwadi
+export const countResponsesByAnganwadi = async (req: Request, res: Response) => {
+  try {
+    const { anganwadiId } = req.params;
+
+    if (!anganwadiId) {
+      return res.status(400).json({ error: "Anganwadi ID is required" });
+    }
+
+    // Count the responses for students belonging to this anganwadi
+    const responseCount = await prisma.studentResponse.count({
+      where: {
+        student: {
+          anganwadiId: anganwadiId
+        }
+      }
+    });
+
+    // Get anganwadi details
+    const anganwadi = await prisma.anganwadi.findUnique({
+      where: { id: anganwadiId },
+      include: {
+        _count: {
+          select: {
+            students: true
+          }
+        }
+      }
+    });
+
+    if (!anganwadi) {
+      return res.status(404).json({ error: "Anganwadi not found" });
+    }
+
+    res.json({
+      anganwadiId,
+      anganwadiName: anganwadi.name,
+      totalStudents: anganwadi._count.students,
+      totalResponses: responseCount
+    });
+  } catch (error) {
+    console.error("❌ Error counting responses for anganwadi:", error);
+    res.status(500).json({ error: "Failed to count responses" });
+  }
+};
