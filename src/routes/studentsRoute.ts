@@ -8,7 +8,8 @@ import {
   searchStudents,
   getStudentEvaluations,
   getStudentPerformanceSummary,
-  getStudentsForAssessment
+  getStudentsForAssessment,
+  updateStudent,
 } from "../controllers/studentController";
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { handleCsvUpload } from "../middlewares/uploadMiddleware";
@@ -42,5 +43,8 @@ router.get("/for-assessment", getStudentsForAssessment);
 router.get("/:studentId/evaluations", getStudentEvaluations);
 //@ts-ignore
 router.get("/:studentId/performance", getStudentPerformanceSummary);
+
+//@ts-ignore
+router.patch("/:id", updateStudent);
 
 export default router;

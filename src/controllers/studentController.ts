@@ -71,6 +71,62 @@ export const deleteStudent = async (
   }
 };
 
+// Update a Student
+export const updateStudent = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { name, gender, status, anganwadiId } = req.body;
+
+    // Check if the student exists
+    const studentExists = await prisma.student.findUnique({
+      where: { id },
+    });
+
+    if (!studentExists) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    // If updating gender, validate it
+    if (gender) {
+      const validGenders = ["MALE", "FEMALE", "OTHER"];
+      if (!validGenders.includes(gender)) {
+        return res.status(400).json({ error: "Invalid gender value" });
+      }
+    }
+
+    // If updating status, validate it
+    if (status) {
+      const validStatuses = ["ACTIVE", "INACTIVE"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Invalid status value" });
+      }
+    }
+
+    // Update the student
+    const updatedStudent = await prisma.student.update({
+      where: { id },
+      data: {
+        name,
+        gender,
+        status,
+        anganwadiId,
+      },
+      include: { anganwadi: true },
+    });
+
+    return res.json({
+      message: "Student updated successfully",
+      student: updatedStudent,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const addStudentToAnganwadi = async (
   req: Request,
   res: Response,
