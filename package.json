@@ -5,11 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "nodemon",
-<<<<<<< HEAD
     "build": "tsc -b && npm run build",
-=======
-    "build": "tsc -b",
->>>>>>> 1169a05526f8bcc90c7e37b74caad4757b803544
     "start": "bun run start"
   },
   "devDependencies": {
