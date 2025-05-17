@@ -10,6 +10,7 @@ import {
   getStudentPerformanceSummary,
   getStudentsForAssessment,
   updateStudent,
+  getStudentsByAnganwadi,
 } from "../controllers/studentController";
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { handleCsvUpload } from "../middlewares/uploadMiddleware";
@@ -26,7 +27,7 @@ router.delete("/:id", deleteStudent);
 //@ts-ignore
 router.patch("/assign-anganwadi", addStudentToAnganwadi);
 //@ts-ignore
-router.get("/anganwadi/:anganwadiId", addStudentToAnganwadi);
+router.get("/anganwadi/:anganwadiId", getStudentsByAnganwadi);
 //@ts-ignore
 router.post("/assign-by-name", searchAndAddStudentToAnganwadiByName);
 //@ts-ignore

@@ -14,6 +14,9 @@ export const importStudentsFromCsv = async (
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
+    
+    // Extract anganwadiId if provided in form data
+    const anganwadiId = req.body.anganwadiId || null;
 
     // Create import record
     const csvImport = await prisma.csvImport.create({
@@ -26,10 +29,14 @@ export const importStudentsFromCsv = async (
 
     // Process CSV file asynchronously
     const filePath = req.file.path;
-    processStudentCsv(filePath, csvImport.id, req.user?.id || "unknown")
-      .catch((error) => {
-        console.error("Error processing CSV:", error);
-      });
+    processStudentCsv(
+      filePath, 
+      csvImport.id, 
+      req.user?.id || "unknown", 
+      anganwadiId // Pass anganwadiId to processing function
+    ).catch((error) => {
+      console.error("Error processing CSV:", error);
+    });
 
     return res.status(202).json({
       message: "CSV import started",

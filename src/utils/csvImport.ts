@@ -21,7 +21,8 @@ interface StudentCsvRow {
 export const processStudentCsv = async (
   filePath: string,
   importId: string,
-  importedBy: string
+  importedBy: string,
+  defaultAnganwadiId?: string | null
 ): Promise<void> => {
   // Update import status to PROCESSING
   await prisma.csvImport.update({
@@ -80,6 +81,9 @@ export const processStudentCsv = async (
             });
             anganwadiId = newAnganwadi.id;
           }
+        } else if (defaultAnganwadiId) {
+          // Use the default anganwadi if specified and no anganwadi name in CSV
+          anganwadiId = defaultAnganwadiId;
         }
 
         // Create the student
