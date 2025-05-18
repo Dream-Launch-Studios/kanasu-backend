@@ -1,6 +1,6 @@
-import app from "./app";
-import { ENV } from "./config/env";
-import prisma from "./config/prisma";
+import app from "./app.js";
+import { ENV } from "./config/env.js";
+import prisma from "./config/prisma.js";
 
 async function testDBConnection() {
   try {
