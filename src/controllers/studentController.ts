@@ -47,6 +47,47 @@ export const getStudents = async (
   next: NextFunction
 ) => {
   try {
+    const search = req.query.search as string;
+    const ids = req.query.ids as string;
+
+    // If IDs are provided, fetch those specific students
+    if (ids && ids.length > 0) {
+      const studentIds = ids.split(',');
+      const students = await prisma.student.findMany({
+        where: {
+          id: { in: studentIds }
+        },
+        select: {
+          id: true,
+          name: true,
+          gender: true,
+        }
+      });
+      return res.json(students);
+    }
+
+    // If search term is provided, use the existing search logic
+    if (search && search.length > 0) {
+      const validGenders = ["MALE", "FEMALE", "OTHER"];
+      const students = await prisma.student.findMany({
+        where: {
+          OR: [
+            { name: { contains: search, mode: "insensitive" } },
+            ...(validGenders.includes(search)
+              ? [{ gender: { equals: search as Gender } }]
+              : []),
+          ],
+        },
+        select: {
+          id: true,
+          name: true,
+          gender: true,
+        }
+      });
+      return res.json(students);
+    }
+
+    // Otherwise, get all students
     const students = await prisma.student.findMany({
       include: { anganwadi: true },
     });
@@ -233,36 +274,6 @@ export const searchAndAddStudentToAnganwadiByName = async (
       message: "Student assigned to anganwadi successfully",
       student: updatedStudent,
     });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const searchStudents = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const search = req.query.search as string;
-
-    const validGenders = ["MALE", "FEMALE", "OTHER"];
-
-    const students = await prisma.student.findMany({
-      where: search
-        ? {
-            OR: [
-              { name: { contains: search, mode: "insensitive" } },
-              ...(validGenders.includes(search)
-                ? [{ gender: { equals: search as Gender } }]
-                : []),
-            ],
-          }
-        : {},
-      include: { anganwadi: true },
-    });
-
-    return res.json(students);
   } catch (error) {
     next(error);
   }

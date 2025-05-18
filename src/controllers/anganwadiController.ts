@@ -160,7 +160,13 @@ export const updateAnganwadi = async (
 ) => {
   try {
     const { id } = req.params;
-    const { name, location, district, studentIds, students: newStudents } = req.body;
+    const {
+      name,
+      location,
+      district,
+      studentIds,
+      students: newStudents,
+    } = req.body;
 
     const existingAnganwadi = await prisma.anganwadi.findUnique({
       where: { id },
@@ -191,10 +197,13 @@ export const updateAnganwadi = async (
     // Prepare new student creations
     let createNewStudents: { name: string; gender: string }[] = [];
     if (newStudents && newStudents.length > 0) {
-      createNewStudents = newStudents.map((s) => ({
-        name: s.name,
-        gender: s.gender,
-      } as { name: string; gender: string }));
+      createNewStudents = newStudents.map(
+        (s) =>
+          ({
+            name: s.name,
+            gender: s.gender,
+          } as { name: string; gender: string })
+      );
     }
     // Build student update operations
     const studentUpdateOperations: any = {};
@@ -234,8 +243,100 @@ export const deleteAnganwadi = async (
 ) => {
   try {
     const { id } = req.params;
-    await prisma.anganwadi.delete({ where: { id } });
+
+    // Check if anganwadi exists
+    const anganwadi = await prisma.anganwadi.findUnique({
+      where: { id },
+    });
+
+    if (!anganwadi) {
+      return res.status(404).json({ error: "Anganwadi not found" });
+    }
+
+    // Delete the anganwadi
+    await prisma.anganwadi.delete({
+      where: { id },
+    });
+
     return res.json({ message: "Anganwadi deleted successfully" });
+  } catch (error: any) {
+    // Handle potential foreign key constraint errors
+    if (error.code === "P2003") {
+      return res.status(400).json({
+        error:
+          "Cannot delete this Anganwadi because it has related records. Please remove all dependencies first.",
+      });
+    }
+    next(error);
+  }
+};
+
+// ✅ Check if an Anganwadi has any dependencies (assessments, etc.)
+export const checkAnganwadiDependencies = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+
+    // Check if anganwadi exists
+    const anganwadi = await prisma.anganwadi.findUnique({
+      where: { id },
+      include: {
+        students: true,
+        anganwadiAssessments: true,
+        studentSubmissions: true,
+      },
+    });
+
+    if (!anganwadi) {
+      return res.status(404).json({ error: "Anganwadi not found" });
+    }
+
+    const dependencies = {
+      hasDependencies: false,
+      details: "",
+      counts: {
+        students: anganwadi.students?.length || 0,
+        anganwadiAssessments: anganwadi.anganwadiAssessments?.length || 0,
+        studentSubmissions: anganwadi.studentSubmissions?.length || 0,
+      },
+    };
+
+    // Check if anganwadi has students
+    if (anganwadi.students && anganwadi.students.length > 0) {
+      dependencies.hasDependencies = true;
+      dependencies.details = `Anganwadi has ${anganwadi.students.length} student(s) associated with it.`;
+    }
+
+    // Check if anganwadi has assessment records
+    if (
+      anganwadi.anganwadiAssessments &&
+      anganwadi.anganwadiAssessments.length > 0
+    ) {
+      dependencies.hasDependencies = true;
+      if (dependencies.details) {
+        dependencies.details += ` It also has ${anganwadi.anganwadiAssessments.length} assessment record(s).`;
+      } else {
+        dependencies.details = `Anganwadi has ${anganwadi.anganwadiAssessments.length} assessment record(s).`;
+      }
+    }
+
+    // Check if anganwadi has student submissions
+    if (
+      anganwadi.studentSubmissions &&
+      anganwadi.studentSubmissions.length > 0
+    ) {
+      dependencies.hasDependencies = true;
+      if (dependencies.details) {
+        dependencies.details += ` It also has ${anganwadi.studentSubmissions.length} student submission(s).`;
+      } else {
+        dependencies.details = `Anganwadi has ${anganwadi.studentSubmissions.length} student submission(s).`;
+      }
+    }
+
+    return res.json(dependencies);
   } catch (error) {
     next(error);
   }
@@ -282,6 +383,121 @@ export const assignToAnganwadi = async (
     });
 
     return res.status(200).json({ message: "Student assigned successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Remove all students from an Anganwadi
+export const removeAllStudentsFromAnganwadi = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+
+    const anganwadi = await prisma.anganwadi.findUnique({
+      where: { id },
+      include: { students: true }
+    });
+
+    if (!anganwadi) {
+      return res.status(404).json({ error: "Anganwadi not found" });
+    }
+
+    // Get all student IDs
+    const studentIds = anganwadi.students.map(student => ({ id: student.id }));
+
+    if (studentIds.length === 0) {
+      return res.status(200).json({ 
+        message: "No students to remove",
+        count: 0
+      });
+    }
+
+    // Disconnect all students from the anganwadi
+    await prisma.anganwadi.update({
+      where: { id },
+      data: {
+        students: {
+          disconnect: studentIds
+        }
+      }
+    });
+
+    return res.status(200).json({ 
+      message: "All students removed from Anganwadi successfully",
+      count: studentIds.length
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Remove specific dependencies from Anganwadi to prepare for deletion
+export const removeAnganwadiDependencies = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+
+    const anganwadi = await prisma.anganwadi.findUnique({
+      where: { id },
+      include: {
+        students: true,
+        anganwadiAssessments: true,
+        studentSubmissions: true
+      }
+    });
+
+    if (!anganwadi) {
+      return res.status(404).json({ error: "Anganwadi not found" });
+    }
+
+    // Count of removed dependencies
+    const removed = {
+      students: 0,
+      assessments: 0,
+      submissions: 0
+    };
+
+    // 1. Remove student connections
+    if (anganwadi.students.length > 0) {
+      const studentIds = anganwadi.students.map(student => ({ id: student.id }));
+      await prisma.anganwadi.update({
+        where: { id },
+        data: {
+          students: {
+            disconnect: studentIds
+          }
+        }
+      });
+      removed.students = studentIds.length;
+    }
+
+    // 2. Delete anganwadi assessments if any
+    if (anganwadi.anganwadiAssessments.length > 0) {
+      await prisma.anganwadiAssessment.deleteMany({
+        where: { anganwadiId: id }
+      });
+      removed.assessments = anganwadi.anganwadiAssessments.length;
+    }
+
+    // 3. Delete student submissions if any
+    if (anganwadi.studentSubmissions.length > 0) {
+      await prisma.studentSubmission.deleteMany({
+        where: { anganwadiId: id }
+      });
+      removed.submissions = anganwadi.studentSubmissions.length;
+    }
+
+    return res.status(200).json({
+      message: "All dependencies removed successfully",
+      removed
+    });
   } catch (error) {
     next(error);
   }

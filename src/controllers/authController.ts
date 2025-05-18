@@ -13,7 +13,7 @@ export const register = async (
       email: string;
       password: string;
       name: string;
-      role: "ADMIN" | "REGIONAL_COORDINATOR";
+      role: string;
     }
   >,
   res: Response,
@@ -29,13 +29,28 @@ export const register = async (
     const existingUser = await prisma.user.findUnique({ where: { email } });
 
     if (existingUser) {
-      return res.status(400).json({ error: "User already exists" });
+      return res.status(409).json({ error: "User already exists" });
+    }
+
+    // Convert role to uppercase to match Prisma enum
+    const userRole = role.toUpperCase();
+    
+    // Validate the role
+    if (!["ADMIN", "REGIONAL_COORDINATOR", "TEACHER"].includes(userRole)) {
+      return res.status(400).json({ 
+        error: "Invalid role. Role must be one of: ADMIN, REGIONAL_COORDINATOR, TEACHER" 
+      });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
-      data: { email, password: hashedPassword, role, name },
+      data: { 
+        email, 
+        password: hashedPassword, 
+        role: userRole as "ADMIN" | "REGIONAL_COORDINATOR" | "TEACHER", 
+        name 
+      },
     });
 
     // 🔥 Generate JWT Token
@@ -51,7 +66,11 @@ export const register = async (
       user: { name: user.name, email: user.email, role: user.role },
     });
   } catch (error) {
-    return next(error);
+    console.error("Registration error:", error);
+    return res.status(500).json({ 
+      error: "Failed to register user", 
+      details: error instanceof Error ? error.message : "Unknown error" 
+    });
   }
 };
 // User Login
@@ -88,6 +107,10 @@ export const login = async (
       userId: user.id,
     });
   } catch (error) {
-    return next(error);
+    console.error("Login error:", error);
+    return res.status(500).json({ 
+      error: "Failed to login", 
+      details: error instanceof Error ? error.message : "Unknown error" 
+    });
   }
 };

@@ -5,7 +5,6 @@ import {
   deleteStudent,
   addStudentToAnganwadi,
   searchAndAddStudentToAnganwadiByName,
-  searchStudents,
   getStudentEvaluations,
   getStudentPerformanceSummary,
   getStudentsForAssessment,
@@ -30,8 +29,7 @@ router.patch("/assign-anganwadi", addStudentToAnganwadi);
 router.get("/anganwadi/:anganwadiId", getStudentsByAnganwadi);
 //@ts-ignore
 router.post("/assign-by-name", searchAndAddStudentToAnganwadiByName);
-//@ts-ignore
-router.get("/search", searchStudents);
+// Search route removed as it's now integrated into the main GET route
 
 // New CSV import route
 //@ts-ignore
