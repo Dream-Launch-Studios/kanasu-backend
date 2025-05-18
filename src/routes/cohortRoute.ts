@@ -17,7 +17,9 @@ router.get("/", getCohorts);
 router.delete("/:id", deleteCohort);
 
 // Teacher ranking routes
+//@ts-ignore
 router.post("/:cohortId/rankings", updateTeacherRankings);
+//@ts-ignore
 router.get("/:cohortId/rankings", getTeacherRankings);
 
 export default router;

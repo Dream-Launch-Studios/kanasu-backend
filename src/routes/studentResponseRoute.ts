@@ -40,7 +40,9 @@ router.get("/scored", getScoredResponses);
 router.get("/export", exportResponses);
 //@ts-ignore
 router.get("/download-all", downloadAllResponses);
+//@ts-ignore
 router.get("/anganwadi/:anganwadiId/count", countResponsesByAnganwadi);
+//@ts-ignore
 router.get("/:id", getResponseById);
 //@ts-ignore
 router.post("/:responseId/score", scoreStudentResponse);
