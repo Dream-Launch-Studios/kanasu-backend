@@ -1,11 +1,11 @@
 {
   "name": "yuvspark-backend",
-  "module": "index.ts",
+  "module": "src/server.ts",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "nodemon",
-    "build": "tsc -b",
+    "build": "bun build ./src/server.ts --outdir ./dist --target node",
     "start": "node dist/server.js"
   },
   "devDependencies": {
