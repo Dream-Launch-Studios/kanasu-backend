@@ -152,7 +152,8 @@ export const getAnganwadiById = async (
     next(error);
   }
 };
-// ✅ Update Anganwadi (students only)
+
+// ✅ Update Anganwadi (students and teacher)
 export const updateAnganwadi = async (
   req: Request<{ id: string }, {}, Partial<CreateAnganwadiRequest>>,
   res: Response,
@@ -166,14 +167,39 @@ export const updateAnganwadi = async (
       district,
       studentIds,
       students: newStudents,
+      teacher,
     } = req.body;
 
     const existingAnganwadi = await prisma.anganwadi.findUnique({
       where: { id },
+      include: { teacher: true },
     });
 
     if (!existingAnganwadi) {
       return res.status(404).json({ error: "Anganwadi not found" });
+    }
+
+    // Handle teacher update if provided
+    if (teacher) {
+      // Validate teacher fields if provided
+      if (teacher.name === "" || teacher.phone === "") {
+        return res
+          .status(400)
+          .json({ error: "Teacher name and phone cannot be empty" });
+      }
+
+      // Check for duplicate teacher phone if it's different from current
+      if (teacher.phone !== existingAnganwadi.teacher?.phone) {
+        const existingTeacher = await prisma.teacher.findUnique({
+          where: { phone: teacher.phone },
+        });
+
+        if (existingTeacher) {
+          return res
+            .status(400)
+            .json({ error: "A teacher with this phone number already exists" });
+        }
+      }
     }
 
     // Prepare existing student connections
@@ -214,13 +240,22 @@ export const updateAnganwadi = async (
       studentUpdateOperations.create = createNewStudents;
     }
 
-    // Update anganwadi with optional name/location/district and student operations
+    // Update anganwadi with optional name/location/district, teacher and student operations
     const anganwadi = await prisma.anganwadi.update({
       where: { id },
       data: {
         name,
         location,
         district,
+        // Update teacher if provided
+        ...(teacher && {
+          teacher: {
+            update: {
+              name: teacher.name,
+              phone: teacher.phone,
+            },
+          },
+        }),
         // Only include student operations if any
         ...(Object.keys(studentUpdateOperations).length > 0
           ? { students: studentUpdateOperations }
@@ -399,7 +434,7 @@ export const removeAllStudentsFromAnganwadi = async (
 
     const anganwadi = await prisma.anganwadi.findUnique({
       where: { id },
-      include: { students: true }
+      include: { students: true },
     });
 
     if (!anganwadi) {
@@ -407,12 +442,14 @@ export const removeAllStudentsFromAnganwadi = async (
     }
 
     // Get all student IDs
-    const studentIds = anganwadi.students.map(student => ({ id: student.id }));
+    const studentIds = anganwadi.students.map((student) => ({
+      id: student.id,
+    }));
 
     if (studentIds.length === 0) {
-      return res.status(200).json({ 
+      return res.status(200).json({
         message: "No students to remove",
-        count: 0
+        count: 0,
       });
     }
 
@@ -421,14 +458,14 @@ export const removeAllStudentsFromAnganwadi = async (
       where: { id },
       data: {
         students: {
-          disconnect: studentIds
-        }
-      }
+          disconnect: studentIds,
+        },
+      },
     });
 
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: "All students removed from Anganwadi successfully",
-      count: studentIds.length
+      count: studentIds.length,
     });
   } catch (error) {
     next(error);
@@ -449,8 +486,8 @@ export const removeAnganwadiDependencies = async (
       include: {
         students: true,
         anganwadiAssessments: true,
-        studentSubmissions: true
-      }
+        studentSubmissions: true,
+      },
     });
 
     if (!anganwadi) {
@@ -461,19 +498,21 @@ export const removeAnganwadiDependencies = async (
     const removed = {
       students: 0,
       assessments: 0,
-      submissions: 0
+      submissions: 0,
     };
 
     // 1. Remove student connections
     if (anganwadi.students.length > 0) {
-      const studentIds = anganwadi.students.map(student => ({ id: student.id }));
+      const studentIds = anganwadi.students.map((student) => ({
+        id: student.id,
+      }));
       await prisma.anganwadi.update({
         where: { id },
         data: {
           students: {
-            disconnect: studentIds
-          }
-        }
+            disconnect: studentIds,
+          },
+        },
       });
       removed.students = studentIds.length;
     }
@@ -481,7 +520,7 @@ export const removeAnganwadiDependencies = async (
     // 2. Delete anganwadi assessments if any
     if (anganwadi.anganwadiAssessments.length > 0) {
       await prisma.anganwadiAssessment.deleteMany({
-        where: { anganwadiId: id }
+        where: { anganwadiId: id },
       });
       removed.assessments = anganwadi.anganwadiAssessments.length;
     }
@@ -489,14 +528,14 @@ export const removeAnganwadiDependencies = async (
     // 3. Delete student submissions if any
     if (anganwadi.studentSubmissions.length > 0) {
       await prisma.studentSubmission.deleteMany({
-        where: { anganwadiId: id }
+        where: { anganwadiId: id },
       });
       removed.submissions = anganwadi.studentSubmissions.length;
     }
 
     return res.status(200).json({
       message: "All dependencies removed successfully",
-      removed
+      removed,
     });
   } catch (error) {
     next(error);

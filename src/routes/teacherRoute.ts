@@ -12,7 +12,7 @@ import {
   getTeacherEvaluationsByStatus,
   getTeacherStudentsForAssessment,
   getTeacherPerformanceSummary,
-  getTeacherStudentResponses
+  getTeacherStudentResponses,
 } from "../controllers/teacherController";
 
 const router = express.Router();

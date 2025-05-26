@@ -8,7 +8,7 @@ import {
   assignToAnganwadi,
   checkAnganwadiDependencies,
   removeAllStudentsFromAnganwadi,
-  removeAnganwadiDependencies
+  removeAnganwadiDependencies,
 } from "../controllers/anganwadiController";
 
 import { authMiddleware } from "../middlewares/authMiddleware";
