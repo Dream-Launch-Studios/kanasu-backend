@@ -43,6 +43,7 @@ This endpoint allows external transcription services to submit text transcriptio
 **Method**: `POST`
 
 **Request Body**:
+
 ```json
 {
   "responseId": "a1b2c3-d4e5f6-g7h8i9", // UUID of the StudentResponse
@@ -51,6 +52,7 @@ This endpoint allows external transcription services to submit text transcriptio
 ```
 
 **Success Response**:
+
 ```json
 {
   "message": "Transcription processed successfully",
@@ -68,6 +70,7 @@ This endpoint allows external transcription services to submit text transcriptio
 ```
 
 **Error Responses**:
+
 - `400 Bad Request`: Missing required fields
 - `404 Not Found`: Student response not found
 - `400 Bad Request`: Question doesn't have answer options
@@ -77,11 +80,13 @@ This endpoint allows external transcription services to submit text transcriptio
 The system uses a fuzzy matching approach to determine if the transcription matches any of the answer options:
 
 1. Text normalization:
+
    - Converts all text to lowercase
    - Removes punctuation
    - Normalizes whitespace
 
 2. Similarity calculation:
+
    - Direct inclusion: Checks if one text contains the other
    - Word-level matching: Analyzes how many words match between the texts
    - Calculates a similarity score between 0 and 1
@@ -93,32 +98,24 @@ The system uses a fuzzy matching approach to determine if the transcription matc
 ### Testing with Postman
 
 1. **Create a Question with Answer Options**
-   - First, create a question through the admin interface with 4 answer options
-   - Mark one as the correct answer
+
+   - First, create a question through the admin interface with up to 4 answer options
+   - Mark one or more options as correct answers
    - Note down the question ID
 
 2. **Create a Student Response**
+
    - Make a POST request to `/api/student-responses` with appropriate data
    - Note down the response ID returned
 
-3. **Submit a Transcription**
-   - Make a POST request to `/api/student-responses/transcription`:
-     - Method: POST
-     - URL: `http://localhost:3000/api/student-responses/transcription`
-     - Headers: `Content-Type: application/json`
-     - Body:
-       ```json
-       {
-         "responseId": "paste-student-response-id-here",
-         "transcription": "Type a text that should match one of the answer options"
-       }
-       ```
-
-4. **Check the Response**
-   - The response will indicate if the transcription matched any answer option
-   - It will also show if it was correct and the score awarded
+3. **Process Text Transcription**
+   - Make a POST request to `/api/student-responses/{responseId}/process-transcription`
+   - The system will match the transcription against answer options
+   - A response is considered correct if it matches any of the correct answers
+   - Score: 5 points for correct answers, 0 for incorrect
 
 **Example Scenario**:
+
 - Question: "What is the capital of France?"
 - Answer Options: ["Paris", "London", "Berlin", "Rome"]
 - Correct Answer: "Paris" (index 0)

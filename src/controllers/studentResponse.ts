@@ -134,12 +134,33 @@ export const getResponsesByEvaluation = async (req: Request, res: Response) => {
 // Get all responses with their scores
 export const getScoredResponses = async (req: Request, res: Response) => {
   try {
-    const { evaluationId } = req.query;
+    const { evaluationId, startDate, endDate, anganwadiId } = req.query;
 
     // Build where clause based on provided filters
     const whereClause: any = {};
+
     if (evaluationId) {
       whereClause.evaluationId = evaluationId as string;
+    }
+
+    if (anganwadiId) {
+      whereClause.student = {
+        anganwadiId: anganwadiId as string,
+      };
+    }
+
+    if (startDate) {
+      whereClause.startTime = {
+        ...whereClause.startTime,
+        gte: new Date(startDate as string),
+      };
+    }
+
+    if (endDate) {
+      whereClause.startTime = {
+        ...whereClause.startTime,
+        lte: new Date(endDate as string),
+      };
     }
 
     // Only get responses that have scores
@@ -152,7 +173,11 @@ export const getScoredResponses = async (req: Request, res: Response) => {
       },
       include: {
         question: true,
-        student: true,
+        student: {
+          include: {
+            anganwadi: true,
+          },
+        },
         evaluation: {
           include: {
             topic: true,
@@ -163,6 +188,9 @@ export const getScoredResponses = async (req: Request, res: Response) => {
             gradedAt: "desc",
           },
         },
+      },
+      orderBy: {
+        startTime: "desc", // Using startTime instead of createdAt
       },
     });
 
@@ -404,8 +432,8 @@ export const exportResponses = async (req: Request, res: Response) => {
         response.audioUrl || "",
         //@ts-ignore
         response.StudentResponseScore?.length > 0
-          //@ts-ignore
-          ? response.StudentResponseScore[0].score + "%"
+          ? //@ts-ignore
+            response.StudentResponseScore[0].score + "%"
           : "Not scored",
         new Date(response.startTime).toLocaleString(),
         new Date(response.endTime).toLocaleString(),
@@ -794,8 +822,8 @@ export const processTextTranscription = async (req: Request, res: Response) => {
     const { responseId, transcription } = req.body;
 
     if (!responseId || !transcription) {
-      return res.status(400).json({ 
-        error: "Both responseId and transcription are required" 
+      return res.status(400).json({
+        error: "Both responseId and transcription are required",
       });
     }
 
@@ -803,8 +831,8 @@ export const processTextTranscription = async (req: Request, res: Response) => {
     const studentResponse = await prisma.studentResponse.findUnique({
       where: { id: responseId },
       include: {
-        question: true
-      }
+        question: true,
+      },
     });
 
     if (!studentResponse) {
@@ -812,10 +840,12 @@ export const processTextTranscription = async (req: Request, res: Response) => {
     }
 
     // Check if the question has answer options
-    if (!studentResponse.question.answerOptions || 
-        studentResponse.question.answerOptions.length === 0) {
-      return res.status(400).json({ 
-        error: "This question doesn't have any answer options to check against" 
+    if (
+      !studentResponse.question.answerOptions ||
+      studentResponse.question.answerOptions.length === 0
+    ) {
+      return res.status(400).json({
+        error: "This question doesn't have any answer options to check against",
       });
     }
 
@@ -825,53 +855,62 @@ export const processTextTranscription = async (req: Request, res: Response) => {
         .toLowerCase()
         .trim()
         .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "") // Remove punctuation
-        .replace(/\s+/g, " ");  // Normalize whitespace
+        .replace(/\s+/g, " "); // Normalize whitespace
     };
-    
+
     const normalizedTranscription = normalizeText(transcription);
     const normalizedOptions = studentResponse.question.answerOptions.map(
-      option => normalizeText(option)
+      (option) => normalizeText(option)
     );
 
     // Compute similarity scores between transcription and each option
-    const similarityScores = normalizedOptions.map(option => {
+    const similarityScores = normalizedOptions.map((option) => {
       // Check for direct inclusion (one contains the other)
-      if (normalizedTranscription.includes(option) || option.includes(normalizedTranscription)) {
+      if (
+        normalizedTranscription.includes(option) ||
+        option.includes(normalizedTranscription)
+      ) {
         return 0.9; // High similarity but not perfect
       }
-      
+
       // Check for word-level matches
-      const transWords = normalizedTranscription.split(' ');
-      const optionWords = option.split(' ');
-      
+      const transWords = normalizedTranscription.split(" ");
+      const optionWords = option.split(" ");
+
       // Count matching words
-      const matchingWords = transWords.filter(word => 
-        optionWords.some(optWord => word === optWord || 
-          (word.length > 3 && optWord.includes(word)) || 
-          (optWord.length > 3 && word.includes(optWord))
+      const matchingWords = transWords.filter((word) =>
+        optionWords.some(
+          (optWord) =>
+            word === optWord ||
+            (word.length > 3 && optWord.includes(word)) ||
+            (optWord.length > 3 && word.includes(optWord))
         )
       ).length;
-      
+
       // Calculate similarity based on matching words relative to total words
       const maxWords = Math.max(transWords.length, optionWords.length);
       return maxWords > 0 ? matchingWords / maxWords : 0;
     });
-    
+
     // Find best match (highest similarity score above threshold)
     const SIMILARITY_THRESHOLD = 0.5; // Adjust as needed
     const bestMatchIndex = similarityScores.reduce(
-      (bestIdx, score, idx) => score > similarityScores[bestIdx] ? idx : bestIdx, 
+      (bestIdx, score, idx) =>
+        score > similarityScores[bestIdx] ? idx : bestIdx,
       0
     );
-    
-    // Only consider it a match if similarity is above threshold
-    const matchedOptionIndex = similarityScores[bestMatchIndex] >= SIMILARITY_THRESHOLD 
-      ? bestMatchIndex 
-      : -1;
 
-    // Determine if it's correct (matches the correct answer)
-    const isCorrect = matchedOptionIndex === studentResponse.question.correctAnswer;
-    
+    // Only consider it a match if similarity is above threshold
+    const matchedOptionIndex =
+      similarityScores[bestMatchIndex] >= SIMILARITY_THRESHOLD
+        ? bestMatchIndex
+        : -1;
+
+    // Determine if it's correct (matches any of the correct answers)
+    const isCorrect =
+      matchedOptionIndex !== -1 &&
+      studentResponse.question.correctAnswers.includes(matchedOptionIndex);
+
     // Score: 5 points for correct answer, 0 for incorrect
     const score = isCorrect ? 5 : 0;
 
@@ -881,7 +920,7 @@ export const processTextTranscription = async (req: Request, res: Response) => {
         studentResponseId: responseId,
         score,
         gradedAt: new Date(),
-      }
+      },
     });
 
     return res.status(200).json({
@@ -889,14 +928,17 @@ export const processTextTranscription = async (req: Request, res: Response) => {
       result: {
         responseId,
         transcription,
-        matchedOption: matchedOptionIndex !== -1 ? 
-          studentResponse.question.answerOptions[matchedOptionIndex] : null,
+        matchedOption:
+          matchedOptionIndex !== -1
+            ? studentResponse.question.answerOptions[matchedOptionIndex]
+            : null,
         matchedOptionIndex,
-        similarity: matchedOptionIndex !== -1 ? similarityScores[matchedOptionIndex] : 0,
+        similarity:
+          matchedOptionIndex !== -1 ? similarityScores[matchedOptionIndex] : 0,
         isCorrect,
         score,
-        scoreId: responseScore.id
-      }
+        scoreId: responseScore.id,
+      },
     });
   } catch (error) {
     console.error("❌ Error processing text transcription:", error);
@@ -905,7 +947,10 @@ export const processTextTranscription = async (req: Request, res: Response) => {
 };
 
 // ✅ Count student responses for an anganwadi
-export const countResponsesByAnganwadi = async (req: Request, res: Response) => {
+export const countResponsesByAnganwadi = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const { anganwadiId } = req.params;
 
@@ -917,9 +962,9 @@ export const countResponsesByAnganwadi = async (req: Request, res: Response) => 
     const responseCount = await prisma.studentResponse.count({
       where: {
         student: {
-          anganwadiId: anganwadiId
-        }
-      }
+          anganwadiId: anganwadiId,
+        },
+      },
     });
 
     // Get anganwadi details
@@ -928,10 +973,10 @@ export const countResponsesByAnganwadi = async (req: Request, res: Response) => 
       include: {
         _count: {
           select: {
-            students: true
-          }
-        }
-      }
+            students: true,
+          },
+        },
+      },
     });
 
     if (!anganwadi) {
@@ -942,7 +987,7 @@ export const countResponsesByAnganwadi = async (req: Request, res: Response) => 
       anganwadiId,
       anganwadiName: anganwadi.name,
       totalStudents: anganwadi._count.students,
-      totalResponses: responseCount
+      totalResponses: responseCount,
     });
   } catch (error) {
     console.error("❌ Error counting responses for anganwadi:", error);
