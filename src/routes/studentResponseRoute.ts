@@ -16,6 +16,7 @@ import {
   downloadAllResponses,
   processTextTranscription,
   countResponsesByAnganwadi,
+  countResponsesByAssessment,
 } from "../controllers/studentResponse";
 
 const router = express.Router();
@@ -42,6 +43,8 @@ router.get("/export", exportResponses);
 router.get("/download-all", downloadAllResponses);
 //@ts-ignore
 router.get("/anganwadi/:anganwadiId/count", countResponsesByAnganwadi);
+//@ts-ignore
+router.get("/assessment/:assessmentId/count", countResponsesByAssessment);
 //@ts-ignore
 router.get("/:id", getResponseById);
 //@ts-ignore

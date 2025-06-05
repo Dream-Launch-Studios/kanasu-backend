@@ -5,7 +5,7 @@ import {
   getAssessmentSessionById,
   getActiveAssessmentSessions,
   updateAssessmentSession,
-  deleteAssessmentSession
+  deleteAssessmentSession,
 } from "../controllers/assessmentSessionController";
 
 const router = express.Router();
@@ -15,14 +15,16 @@ const router = express.Router();
 router.post("/assessment-sessions", createAssessmentSession);
 
 // ✅ Get all assessment sessions
+//@ts-ignore
 router.get("/assessment-sessions", getAssessmentSessions);
 
-// ✅ Get active assessment sessions
-router.get("/assessment-sessions/active", getActiveAssessmentSessions);
-
 // ✅ Get assessment session by ID
-//@ts-ignore 
+//@ts-ignore
 router.get("/assessment-sessions/:id", getAssessmentSessionById);
+
+// ✅ Get active assessment sessions
+//@ts-ignore
+router.get("/active-assessment-sessions", getActiveAssessmentSessions);
 
 // ✅ Update an assessment session
 //@ts-ignore
@@ -32,4 +34,4 @@ router.put("/assessment-sessions/:id", updateAssessmentSession);
 //@ts-ignore
 router.delete("/assessment-sessions/:id", deleteAssessmentSession);
 
-export default router; 
+export default router;

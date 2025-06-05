@@ -894,3 +894,131 @@ export const submitBulkResponses = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to submit responses" });
   }
 };
+
+/**
+ * Download assessment data for offline use
+ * This includes all assessment details, topics, questions, and media files
+ */
+export const downloadAssessmentData = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { anganwadiId } = req.query;
+
+    if (!anganwadiId) {
+      return res.status(400).json({ error: "Anganwadi ID is required" });
+    }
+
+    // Get assessment with all related data
+    const assessment = await prisma.assessmentSession.findUnique({
+      where: { 
+        id,
+        anganwadiAssessments: {
+          some: {
+            anganwadiId: anganwadiId as string,
+          }
+        }
+      },
+      include: {
+        anganwadiAssessments: {
+          where: {
+            anganwadiId: anganwadiId as string,
+          },
+          include: {
+            anganwadi: true
+          }
+        }
+      }
+    });
+
+    if (!assessment) {
+      return res.status(404).json({ error: "Assessment not found or not available for this anganwadi" });
+    }
+
+    // Get topics with questions
+    const topics = await prisma.topic.findMany({
+      where: {
+        id: {
+          in: assessment.topicIds
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        questions: {
+          select: {
+            id: true,
+            text: true,
+            imageUrl: true,
+            audioUrl: true,
+            answerOptions: true
+          }
+        }
+      }
+    });
+
+    // Get students for this anganwadi
+    const students = await prisma.student.findMany({
+      where: {
+        anganwadiId: anganwadiId as string,
+        status: "ACTIVE"
+      },
+      select: {
+        id: true,
+        name: true,
+        gender: true
+      }
+    });
+
+    // Prepare the offline data package
+    const offlineData = {
+      assessment: {
+        id: assessment.id,
+        name: assessment.name,
+        description: assessment.description,
+        startDate: assessment.startDate,
+        endDate: assessment.endDate,
+        isActive: assessment.isActive,
+        status: assessment.status,
+        anganwadi: assessment.anganwadiAssessments[0]?.anganwadi,
+        downloadedAt: new Date().toISOString()
+      },
+      topics: topics.map(topic => ({
+        id: topic.id,
+        name: topic.name,
+        questions: topic.questions.map(question => ({
+          id: question.id,
+          text: question.text,
+          imageUrl: question.imageUrl,
+          audioUrl: question.audioUrl,
+          answerOptions: question.answerOptions
+        }))
+      })),
+      students: students,
+      mediaFiles: {
+        images: topics.flatMap(topic => 
+          topic.questions
+            .filter(q => q.imageUrl)
+            .map(q => ({
+              questionId: q.id,
+              url: q.imageUrl,
+              type: 'image'
+            }))
+        ),
+        audio: topics.flatMap(topic => 
+          topic.questions
+            .filter(q => q.audioUrl)
+            .map(q => ({
+              questionId: q.id,
+              url: q.audioUrl,
+              type: 'audio'
+            }))
+        )
+      }
+    };
+
+    res.status(200).json(offlineData);
+  } catch (error) {
+    console.error("[Download Assessment Data Error]", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};

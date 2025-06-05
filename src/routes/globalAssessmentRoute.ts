@@ -10,6 +10,7 @@ import {
   getActiveAssessmentsForAnganwadi,
   getSubmissionById,
   submitBulkResponses,
+  downloadAssessmentData,
 } from "../controllers/globalAssessmentController";
 
 const router = express.Router();
@@ -53,5 +54,9 @@ router.patch("/:id/complete", completeGlobalAssessment);
 // Submit bulk responses
 //@ts-ignore
 router.post("/bulk", submitBulkResponses);
+
+// Download assessment data for offline use
+//@ts-ignore
+router.get("/:id/download", downloadAssessmentData);
 
 export default router;

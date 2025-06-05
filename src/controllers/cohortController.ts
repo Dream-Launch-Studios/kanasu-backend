@@ -303,6 +303,27 @@ export const getTeacherRankings = async (
     // Get statistics for each teacher
     const teachersWithStats = await Promise.all(
       teachers.map(async (teacher) => {
+        if (!teacher.anganwadiId) {
+          return {
+            ...teacher,
+            stats: {
+              responseCount: 0,
+              averageScore: 0,
+              anganwadiResponses: 0,
+            },
+            rank: 0,
+          };
+        }
+
+        // Get anganwadi response count
+        const anganwadiStats = await prisma.studentResponse.count({
+          where: {
+            student: {
+              anganwadiId: teacher.anganwadiId,
+            },
+          },
+        });
+
         // Get all student responses for this teacher through evaluations
         const evaluationResponses = await prisma.studentResponse.findMany({
           where: {
@@ -364,29 +385,266 @@ export const getTeacherRankings = async (
         const averageScore =
           allResponses.length > 0 ? totalScores / allResponses.length : 0;
 
-        // Use the teacher's rank from the database
-        const rank = teacher.rank || 0;
-
         return {
           ...teacher,
           stats: {
             responseCount: allResponses.length,
             averageScore,
+            anganwadiResponses: anganwadiStats,
           },
-          rank,
+          rank: 0, // Will be calculated below
         };
       })
     );
 
-    // Sort the teachers by rank for display
-    const sortedTeachers = teachersWithStats.sort((a, b) => {
-      if (a.rank === 0) return 1; // Push unranked teachers to the end
-      if (b.rank === 0) return -1;
-      return a.rank - b.rank; // Otherwise sort by rank asc
-    });
+    // Sort teachers by anganwadi response count (descending) and assign ranks
+    const sortedTeachers = teachersWithStats
+      .sort((a, b) => {
+        // Sort by anganwadi responses first (higher responses = higher rank)
+        const responsesDiff =
+          b.stats.anganwadiResponses - a.stats.anganwadiResponses;
+        if (responsesDiff !== 0) return responsesDiff;
+
+        // If responses are equal, sort by average score
+        return b.stats.averageScore - a.stats.averageScore;
+      })
+      .map((teacher, index) => ({
+        ...teacher,
+        rank: index + 1, // Assign ranks based on sorted position (1-based)
+      }));
 
     return res.json(sortedTeachers);
   } catch (error) {
     next(error);
+  }
+};
+
+export const getCohortTeacherRankings = async (req: Request, res: Response) => {
+  try {
+    const cohortId = req.params.cohortId;
+    const assessmentId = req.query.assessmentId as string;
+
+    if (!assessmentId) {
+      return res.status(400).json({ error: "assessmentId query parameter is required" });
+    }
+
+    // Get all teachers in the cohort with their anganwadi and student submissions
+    const teachers = await prisma.teacher.findMany({
+      where: {
+        cohortId: cohortId,
+      },
+      include: {
+        anganwadi: true,
+        studentSubmissions: true,
+      },
+    });
+
+    // Get the assessment session
+    const assessment = await prisma.assessmentSession.findUnique({
+      where: { id: assessmentId },
+      select: {
+        id: true,
+        name: true,
+        startDate: true,
+        endDate: true,
+        anganwadiAssessments: {
+          include: {
+            anganwadi: true,
+          },
+        },
+      },
+    });
+
+    if (!assessment) {
+      return res.status(404).json({ error: "Assessment not found" });
+    }
+
+    // Get rankings for each teacher
+    const teacherRankings = await Promise.all(
+      teachers.map(async (teacher) => {
+        // Get student responses through student submissions
+        const studentResponses = await prisma.studentResponse.count({
+          where: {
+            studentSubmission: {
+              teacherId: teacher.id,
+              assessmentSessionId: assessment.id, // Filter by specific assessment
+            },
+          },
+        });
+
+        // Get average scores through student response scores
+        const responseScores = await prisma.studentResponseScore.findMany({
+          where: {
+            studentResponse: {
+              studentSubmission: {
+                teacherId: teacher.id,
+                assessmentSessionId: assessment.id, // Filter by specific assessment
+              },
+            },
+          },
+          select: {
+            score: true,
+          },
+        });
+
+        const averageScore =
+          responseScores.length > 0
+            ? responseScores.reduce((acc, curr) => acc + curr.score, 0) /
+              responseScores.length
+            : 0;
+
+        // Get anganwadi responses if teacher has an anganwadi
+        let anganwadiResponses = 0;
+        let assessmentResponseRate = 0;
+
+        if (teacher.anganwadiId) {
+          // Get regular anganwadi responses for this assessment
+          anganwadiResponses = await prisma.studentResponse.count({
+            where: {
+              studentSubmission: {
+                anganwadiId: teacher.anganwadiId,
+                assessmentSessionId: assessment.id, // Filter by specific assessment
+              },
+            },
+          });
+
+          // Get assessment response rate for this anganwadi
+          const totalStudents = await prisma.student.count({
+            where: {
+              anganwadiId: teacher.anganwadiId,
+            },
+          });
+
+          const assessmentSubmissions = await prisma.studentSubmission.count({
+            where: {
+              assessmentSessionId: assessment.id,
+              anganwadiId: teacher.anganwadiId,
+            },
+          });
+
+          assessmentResponseRate =
+            totalStudents > 0
+              ? (assessmentSubmissions / totalStudents) * 100
+              : 0;
+        }
+
+        // Calculate weighted score
+        // 35% assessment response rate, 35% anganwadi responses, 20% direct responses, 10% average score
+        const weightedScore =
+          assessmentResponseRate * 0.35 +
+          anganwadiResponses * 0.35 +
+          studentResponses * 0.2 +
+          averageScore * 0.1;
+
+        return {
+          id: teacher.id,
+          name: teacher.name || "",
+          phone: teacher.phone || "",
+          anganwadi: teacher.anganwadi
+            ? {
+                id: teacher.anganwadi.id,
+                name: teacher.anganwadi.name,
+              }
+            : null,
+          stats: {
+            responseCount: studentResponses,
+            averageScore: averageScore,
+            totalStudents: teacher.studentSubmissions.length,
+            responsesPerStudent:
+              teacher.studentSubmissions.length > 0
+                ? studentResponses / teacher.studentSubmissions.length
+                : 0,
+            anganwadiResponses: anganwadiResponses,
+            assessmentResponseRate: assessmentResponseRate,
+            weightedScore: weightedScore,
+          },
+        };
+      })
+    );
+
+    // Sort teachers by weighted score
+    const sortedRankings = teacherRankings.sort(
+      (a, b) => b.stats.weightedScore - a.stats.weightedScore
+    );
+
+    return res.status(200).json({
+      assessment: {
+        id: assessment.id,
+        name: assessment.name,
+        startDate: assessment.startDate,
+        endDate: assessment.endDate,
+      },
+      rankings: sortedRankings,
+    });
+  } catch (error) {
+    console.error("Error getting cohort teacher rankings:", error);
+    return res.status(500).json({
+      error: "Failed to get teacher rankings",
+    });
+  }
+};
+
+export const getCohortAssessments = async (req: Request, res: Response) => {
+  try {
+    const { cohortId } = req.params;
+
+    // Get all teachers in the cohort to get their anganwadi IDs
+    const teachers = await prisma.teacher.findMany({
+      where: { cohortId },
+      select: { anganwadiId: true },
+    });
+
+    const anganwadiIds = teachers
+      .map((t) => t.anganwadiId)
+      .filter((id): id is string => id !== null);
+
+    // Get all published assessments that have submissions from these anganwadis
+    const assessments = await prisma.assessmentSession.findMany({
+      where: {
+        status: "PUBLISHED",
+        anganwadiAssessments: {
+          some: {
+            anganwadiId: {
+              in: anganwadiIds,
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        startDate: true,
+        endDate: true,
+        status: true,
+        _count: {
+          select: {
+            studentSubmissions: {
+              where: {
+                anganwadiId: {
+                  in: anganwadiIds,
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        startDate: "desc",
+      },
+    });
+
+    return res.status(200).json(
+      assessments.map((assessment) => ({
+        id: assessment.id,
+        name: assessment.name,
+        startDate: assessment.startDate,
+        endDate: assessment.endDate,
+        status: assessment.status,
+        submissionCount: assessment._count.studentSubmissions,
+      }))
+    );
+  } catch (error) {
+    console.error("Error getting cohort assessments:", error);
+    return res.status(500).json({ error: "Failed to get cohort assessments" });
   }
 };

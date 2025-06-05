@@ -994,3 +994,87 @@ export const countResponsesByAnganwadi = async (
     res.status(500).json({ error: "Failed to count responses" });
   }
 };
+
+// Count student responses by assessment and anganwadi
+export const countResponsesByAssessment = async (req: Request, res: Response) => {
+  try {
+    const { assessmentId } = req.params;
+
+    if (!assessmentId) {
+      return res.status(400).json({ error: "Assessment ID is required" });
+    }
+
+    // Get all anganwadis participating in this assessment
+    const assessmentWithAnganwadis = await prisma.assessmentSession.findUnique({
+      where: { id: assessmentId },
+      select: {
+        id: true,
+        startDate: true,
+        endDate: true,
+        anganwadiAssessments: {
+          select: {
+            anganwadiId: true,
+            anganwadi: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!assessmentWithAnganwadis) {
+      return res.status(404).json({ error: "Assessment not found" });
+    }
+
+    // Get response counts for each anganwadi
+    const responseCounts = await Promise.all(
+      assessmentWithAnganwadis.anganwadiAssessments.map(async (aa) => {
+        // Count submissions for this anganwadi in this assessment
+        const submissionCount = await prisma.studentSubmission.count({
+          where: {
+            assessmentSessionId: assessmentId,
+            anganwadiId: aa.anganwadiId
+          }
+        });
+
+        // Count total students in this anganwadi
+        const totalStudents = await prisma.student.count({
+          where: {
+            anganwadiId: aa.anganwadiId,
+          }
+        });
+
+        return {
+          anganwadiId: aa.anganwadiId,
+          anganwadiName: aa.anganwadi.name,
+          totalStudents,
+          respondedStudents: submissionCount,
+          responseRate: totalStudents > 0 ? (submissionCount / totalStudents) * 100 : 0
+        };
+      })
+    );
+
+    // Calculate overall statistics
+    const totalStudents = responseCounts.reduce((sum, item) => sum + item.totalStudents, 0);
+    const totalResponses = responseCounts.reduce((sum, item) => sum + item.respondedStudents, 0);
+    const overallResponseRate = totalStudents > 0 ? (totalResponses / totalStudents) * 100 : 0;
+
+    res.json({
+      assessmentId,
+      startDate: assessmentWithAnganwadis.startDate,
+      endDate: assessmentWithAnganwadis.endDate,
+      totalAnganwadis: responseCounts.length,
+      totalStudents,
+      totalResponses,
+      overallResponseRate,
+      anganwadiStats: responseCounts
+    });
+
+  } catch (error) {
+    console.error("❌ Error counting responses by assessment:", error);
+    res.status(500).json({ error: "Failed to count responses by assessment" });
+  }
+};
